@@ -29,6 +29,10 @@ function escapeHtml(s) {
 // ---------- HUD ----------
 export function setStageLabel(name) { el("hud-stage").textContent = name; }
 
+// ---------- title ----------
+export function showTitle() { el("title").classList.remove("hidden"); }
+export function hideTitle() { el("title").classList.add("hidden"); }
+
 // ---------- toast ----------
 export function showToast() { el("toast").classList.remove("hidden"); }
 export function hideToast() { el("toast").classList.add("hidden"); }

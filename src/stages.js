@@ -155,9 +155,102 @@ function buildStage1() {
   return stage;
 }
 
-export const STAGE_BUILDERS = [buildStage0, buildStage1];
+// ===== STAGE 2 — "Side Effects" : BUG#02 door + BUG#04 enemy AI =====
+// Two parallel routes converge on the goal:
+//   TOP    — stairs up to a ledge guarded by a FROZEN enemy. Hop over it
+//            (use the bug). Do NOT fix it: a fixed enemy wakes and chases.
+//   BOTTOM — a ground corridor blocked by a stuck-closed door. FIX the door
+//            to walk through — but that side-effect WAKES the enemy (chain).
+function buildStage2() {
+  const stage = {
+    name: "STAGE 2 — SIDE EFFECTS",
+    world: { w: 2400, h: 1000 },
+    spawn: { x: 50, y: 800 },
+    goal: { x: 2300, y: 420, w: 26, h: 460 },
+    platforms: [
+      { id: "ground_start",  x: 0,    y: 860, w: 500,  h: 140, solid: true },
+      { id: "ground_bottom", x: 500,  y: 860, w: 1900, h: 140, solid: true },
+
+      // wide, overlapping steps up to the TOP route — wide enough that a
+      // running jump always lands on the next step (no overshoot back to ground)
+      { id: "stair1", x: 440, y: 790, w: 280, h: 24, solid: true },
+      { id: "stair2", x: 680, y: 720, w: 280, h: 24, solid: true },
+      { id: "stair3", x: 920, y: 650, w: 280, h: 24, solid: true },
+      { id: "top_ledge", x: 1160, y: 600, w: 1040, h: 24, solid: true },
+
+      // the stuck-closed door across the BOTTOM corridor (BUG#02)
+      { id: "door_main", x: 1500, y: 700, w: 40, h: 160, solid: true, glitchy: true },
+
+      { id: "end_wall", x: 2376, y: 0, w: 24, h: 1000, solid: true },
+    ],
+    // enemies: frozen (solid platform, harmless) until woken -> dangerous + moving.
+    // Sits on the TOP ledge above the door; hop over it (do not fix it).
+    enemies: [
+      { id: "guard_01", x: 1500, y: 546, w: 44, h: 54, x0: 1380, x1: 1620,
+        dir: 1, dangerous: false, solid: true, glitchy: true },
+    ],
+    bugs: [],
+  };
+
+  const wake = (s) => {
+    const e = s.enemies[0];
+    e.dangerous = true; e.solid = false; e.glitchy = false;
+  };
+
+  stage.bugs = [
+    {
+      id: "BUG#02", code: "DOOR_STATE",
+      desc: "// gate won't open. state flag desync? -mei",
+      state: "dormant", triggerX: 360,
+      activate() {
+        this.state = "active";
+        log("[WARN] door 'gate_A' stuck closed (state desync)", "warn");
+      },
+      fix(s) {
+        this.state = "fixed";
+        const d = find(s, "door_main");
+        d.solid = false; d.fading = true; d.glitchy = false;
+        wake(s); // side-effect chain: opening the gate re-enables the guard AI
+        GAME.corruption += 1;
+        log("[INFO] gate_A opened", "info");
+        log("[WARN] side effect: enemy 'guard_01' AI re-enabled", "warn");
+      },
+      ignore() {
+        this.state = "ignored";
+        log("[INFO] BUG#02 left unresolved — gate stays shut", "meta");
+      },
+      get resolved() { return this.state === "fixed" || this.state === "ignored"; },
+    },
+    {
+      id: "BUG#04", code: "ENEMY_AI",
+      desc: "// guard stuck in idle loop. harmless... for now. -kj",
+      state: "dormant", triggerX: 360,
+      activate() {
+        this.state = "active";
+        log("[WARN] enemy 'guard_01' AI = idle_loop (frozen)", "warn");
+      },
+      fix(s) {
+        this.state = "fixed";
+        wake(s);
+        GAME.corruption += 1;
+        log("[INFO] enemy AI restored — guard_01 is active", "info");
+        log("[WARN] careful: it can reach the tester now", "warn");
+      },
+      ignore() {
+        this.state = "ignored";
+        log("[INFO] BUG#04 left unresolved — guard stays frozen", "meta");
+      },
+      get resolved() { return this.state === "fixed" || this.state === "ignored"; },
+    },
+  ];
+  return stage;
+}
+
+export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 
 export function buildStage(index) {
-  return STAGE_BUILDERS[index]();
+  const s = STAGE_BUILDERS[index]();
+  if (!s.enemies) s.enemies = []; // STAGE 0 / 1 have none
+  return s;
 }

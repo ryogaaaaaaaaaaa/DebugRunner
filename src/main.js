@@ -1,11 +1,12 @@
 import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
 import { initInput, justPressed, clearPressed } from "./input.js";
 import { buildStage, STAGE_COUNT } from "./stages.js";
-import { makePlayer, updatePlayer } from "./player.js";
+import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import {
   log, clearLog, setStageLabel, showToast, hideToast,
   renderDebugPanel, openDebug, closeDebug,
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
+  showTitle, hideTitle,
 } from "./ui.js";
 
 const canvas = document.getElementById("game");
@@ -13,17 +14,27 @@ const ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = false;
 
 const BUILD_LABEL = "BUILD v0.3.1 (TEST)";
+const ENEMY_SPEED = 130; // px/s when a fixed enemy patrols
 
 let stage, player;
-let phase;            // 'play' | 'cleared' | 'won'
+let phase;            // 'title' | 'play' | 'cleared' | 'won'
 let panelSel, panelAction;
 let metaTimer, glitchTimer, glitchOn;
 
 // expose a tiny debug handle (it IS a debug game) — handy for testing/tinkering
 window.__DR = { GAME, get stage() { return stage; }, get player() { return player; } };
 
+// ---------------- title ----------------
+function toTitle() {
+  phase = "title";
+  stage = null;
+  setIncursionClass(0);
+  showTitle();
+}
+
 // ---------------- run / stage flow ----------------
 function startRun() {
+  hideTitle();
   resetGame();
   clearLog();
   hideClear();
@@ -57,13 +68,20 @@ function detectedBugs() {
 }
 
 function updateIncursion() {
-  // 演出段階② kicks in from STAGE 1 onward, or once the player has fixed enough.
-  GAME.incursion = GAME.stageIndex >= 1 || GAME.corruption >= 2 ? 1 : 0;
-  setIncursionClass(GAME.incursion);
+  // 演出段階②(UI/log異変) from STAGE 1, deepening (faster) by STAGE 2 / high corruption.
+  let lvl = 0;
+  if (GAME.stageIndex >= 2 || GAME.corruption >= 4) lvl = 2;
+  else if (GAME.stageIndex >= 1 || GAME.corruption >= 2) lvl = 1;
+  GAME.incursion = lvl;
+  setIncursionClass(lvl);
 }
 
 // ---------------- update ----------------
 function update(dt) {
+  if (phase === "title") {
+    if (justPressed("confirm") || justPressed("jump") || justPressed("retry")) startRun();
+    return;
+  }
   if (phase === "won") {
     if (justPressed("retry")) startRun();
     return;
@@ -89,9 +107,19 @@ function update(dt) {
 
   if (GAME.paused) { handlePanelInput(); return; }
 
-  // gameplay
-  const ev = updatePlayer(player, dt, stage.platforms, GAME.keys);
+  // gameplay — frozen enemies act as solid platforms; woken ones don't block.
+  updateEnemies(dt);
+  const solids = stage.platforms.concat(stage.enemies);
+  const ev = updatePlayer(player, dt, solids, GAME.keys);
   if (ev === "respawn") log("[INFO] tester respawned", "info");
+
+  // a woken (dangerous) enemy that touches the tester sends them back
+  for (const e of stage.enemies) {
+    if (e.dangerous && aabb(player, e)) {
+      resetPlayer(player);
+      log("[ERROR] guard_01 caught the tester", "err");
+    }
+  }
 
   // bug triggers (x-zone based)
   for (const b of stage.bugs) {
@@ -147,6 +175,15 @@ function updateCamera(dt) {
   const k = Math.min(1, dt * 8);
   GAME.camera.x += (tx - GAME.camera.x) * k;
   GAME.camera.y += (ty - GAME.camera.y) * k;
+}
+
+function updateEnemies(dt) {
+  for (const e of stage.enemies) {
+    if (!e.dangerous) continue; // frozen: stays put (and stays solid)
+    e.x += e.dir * ENEMY_SPEED * dt;
+    if (e.x <= e.x0) { e.x = e.x0; e.dir = 1; }
+    if (e.x >= e.x1) { e.x = e.x1; e.dir = -1; }
+  }
 }
 
 function tickFades(dt) {
@@ -208,13 +245,34 @@ function advance() {
 function render() {
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
   drawBackground();
+  if (!stage) return; // title screen: just the backdrop behind the overlay
   ctx.save();
   ctx.translate(-Math.round(GAME.camera.x), -Math.round(GAME.camera.y));
   drawPlatforms();
+  drawEnemies();
   drawGoal();
   drawPlayer();
   ctx.restore();
   drawTriggerHint();
+}
+
+function drawEnemies() {
+  for (const e of stage.enemies) {
+    if (e.dangerous) {
+      ctx.fillStyle = "#e35664";
+      ctx.fillRect(e.x, e.y, e.w, e.h);
+      ctx.fillStyle = "#0c0e12"; // eye looks toward travel direction
+      ctx.fillRect(e.x + (e.dir > 0 ? e.w - 13 : 7), e.y + 12, 6, 6);
+    } else {
+      const j = (Math.sin(performance.now() / 80 + e.x) * 2) | 0;
+      ctx.fillStyle = "rgba(227,86,100,0.22)";
+      ctx.fillRect(e.x + j, e.y, e.w, e.h);
+      ctx.strokeStyle = "#e35664"; ctx.setLineDash([4, 3]);
+      ctx.strokeRect(e.x, e.y, e.w, e.h); ctx.setLineDash([]);
+      ctx.fillStyle = "#7f8a96"; ctx.font = "9px 'Courier New', monospace";
+      ctx.textAlign = "center"; ctx.fillText("idle", e.x + e.w / 2, e.y - 4); ctx.textAlign = "left";
+    }
+  }
 }
 
 function drawBackground() {
@@ -312,6 +370,9 @@ document.getElementById("clear-retry").addEventListener("click", () => {
   if (phase === "cleared") advance();
   else startRun();
 });
+document.getElementById("title-start").addEventListener("click", () => {
+  if (phase === "title") startRun();
+});
 initInput();
-startRun();
+toTitle();
 requestAnimationFrame(frame);

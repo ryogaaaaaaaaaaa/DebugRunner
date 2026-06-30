@@ -185,4 +185,31 @@ html, body {
 
 #stage.incursion2::after { animation-duration: 1.6s; }
 
+/* ---------- title / menu ---------- */
+#title {
+  position: absolute; inset: 0; z-index: 10;
+  background: radial-gradient(circle at 50% 40%, #0e131a 0%, #05060a 75%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+#title-box { text-align: center; }
+#title-logo {
+  font-size: 52px; letter-spacing: 6px; color: var(--fg);
+  text-shadow: 2px 0 var(--accent), -2px 0 var(--err);
+  animation: titleglitch 5s steps(60) infinite;
+}
+@keyframes titleglitch {
+  0%, 92%, 100% { text-shadow: 2px 0 var(--accent), -2px 0 var(--err); }
+  93% { text-shadow: -4px 0 var(--err), 4px 0 var(--accent); transform: translateX(2px); }
+  95% { text-shadow: 3px 0 var(--accent), -3px 0 var(--err); transform: translateX(-2px); }
+}
+#title-ver { color: #5a6470; letter-spacing: 3px; margin-top: 6px; font-size: 13px; }
+#title-tag { color: #8b95a1; margin: 26px 0; font-size: 14px; line-height: 1.7; letter-spacing: 1px; }
+#title-start {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  padding: 12px 30px; font-family: inherit; font-size: 15px; letter-spacing: 3px; cursor: pointer;
+}
+#title-start:hover { background: rgba(86, 227, 159, 0.12); }
+#title-controls { margin-top: 22px; color: #4a5560; font-size: 12px; letter-spacing: 1px; }
+#title-foot { position: absolute; bottom: 14px; color: #2f3845; font-size: 11px; letter-spacing: 2px; }
+
 .hidden { display: none !important; }
