@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DebugRunner v0.3.1 (TEST BUILD)</title>
+  <link rel="icon" href="data:," />
+  <script type="module" crossorigin src="./assets/index-u3BdmwtQ.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-egZvDMnT.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <!-- HUD -->
+    <div id="hud-stage" class="hud">STAGE 0 — TEST BUILD</div>
+    <div id="hud-build" class="hud">BUILD v0.3.1 (TEST)</div>
+
+    <!-- Bug detected toast -->
+    <div id="toast" class="hidden">! BUG DETECTED &nbsp;[TAB]</div>
+
+    <!-- Error log console -->
+    <div id="log">
+      <div id="log-head">// CONSOLE</div>
+      <div id="log-body"></div>
+    </div>
+
+    <!-- Debug panel overlay -->
+    <div id="debug" class="hidden">
+      <div id="debug-box">
+        <div id="debug-title">DEBUG CONSOLE</div>
+        <div id="debug-list"></div>
+        <div id="debug-hint">[↑/↓] select &nbsp; [Enter] confirm &nbsp; [TAB] close</div>
+      </div>
+    </div>
+
+    <!-- Win / clear overlay -->
+    <div id="clear" class="hidden">
+      <div id="clear-box">
+        <div id="clear-title">BUILD STABLE?</div>
+        <div id="clear-sub">STAGE 0 CLEAR</div>
+        <div id="clear-stats"></div>
+        <button id="clear-retry">RETRY [R]</button>
+      </div>
+    </div>
+
+    <!-- Start hint -->
+    <div id="hint">←→ move &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; TAB debug</div>
+
+    <!-- Title / menu screen -->
+    <div id="title">
+      <div id="title-box">
+        <div id="title-logo">DebugRunner</div>
+        <div id="title-ver">v0.3.1 (TEST BUILD)</div>
+        <div id="title-tag">fix the bug, or use it.<br>the tester is part of the build.</div>
+        <button id="title-start">▶ START TEST</button>
+        <div id="title-controls">←→ move &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; TAB debug panel</div>
+      </div>
+      <div id="title-foot">build flagged for QA — do not ship</div>
+    </div>
+  </div>
+
+</body>
+</html>
