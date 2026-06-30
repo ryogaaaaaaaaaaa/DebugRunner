@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>DebugRunner v0.3.1 (TEST BUILD)</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/src/style.css" />
@@ -58,6 +58,21 @@
       <div id="title-foot">build flagged for QA — do not ship</div>
     </div>
   </div>
+
+  <!-- On-screen touch controls (shown on touch devices, outside the scaled stage) -->
+  <div id="touch-controls">
+    <div class="tc-pad-left">
+      <button class="tc" id="tc-left" aria-label="move left">◀</button>
+      <button class="tc" id="tc-right" aria-label="move right">▶</button>
+    </div>
+    <div class="tc-pad-right">
+      <button class="tc tc-small" id="tc-debug" aria-label="debug panel">⚙ DEBUG</button>
+      <button class="tc tc-jump" id="tc-jump" aria-label="jump">JUMP</button>
+    </div>
+  </div>
+
+  <!-- Portrait hint -->
+  <div id="rotate-hint">↻ rotate your device for a bigger view</div>
 
   <script type="module" src="/src/main.js"></script>
 </body>

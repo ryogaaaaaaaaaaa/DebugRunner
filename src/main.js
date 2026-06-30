@@ -1,5 +1,5 @@
 import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
-import { initInput, justPressed, clearPressed } from "./input.js";
+import { initInput, justPressed, clearPressed, bindTouchControls } from "./input.js";
 import { buildStage, STAGE_COUNT } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import {
@@ -153,16 +153,24 @@ function handlePanelInput() {
     changed = true;
   }
   if (justPressed("confirm")) {
-    const bug = bugs[panelSel];
-    if (!bug.resolved) {
-      if (panelAction === "fix") bug.fix(stage);
-      else bug.ignore(stage);
-      if (detectedBugs().every((b) => b.resolved)) hideToast();
-      updateIncursion();
-      changed = true;
-    }
+    applyDecision(panelSel, panelAction);
+    return;
   }
   if (changed) renderDebugPanel(detectedBugs(), panelSel, panelAction);
+}
+
+// Apply FIX/IGNORE to a detected bug by index. Shared by keyboard (Enter) and
+// by directly tapping the FIX/IGNORE buttons on touch.
+function applyDecision(i, action) {
+  const bugs = detectedBugs();
+  const bug = bugs[i];
+  if (!bug || bug.resolved) return;
+  if (action === "fix") bug.fix(stage);
+  else bug.ignore(stage);
+  if (detectedBugs().every((b) => b.resolved)) hideToast();
+  updateIncursion();
+  panelSel = i; panelAction = action;
+  renderDebugPanel(detectedBugs(), panelSel, panelAction);
 }
 
 function updateCamera(dt) {
@@ -373,6 +381,26 @@ document.getElementById("clear-retry").addEventListener("click", () => {
 document.getElementById("title-start").addEventListener("click", () => {
   if (phase === "title") startRun();
 });
+
+// Tap FIX / IGNORE directly on the debug panel (touch-friendly).
+document.getElementById("debug-list").addEventListener("click", (e) => {
+  if (!GAME.paused) return;
+  const btn = e.target.closest(".bug-btn");
+  const entry = e.target.closest(".bug-entry");
+  if (!btn || !entry) return;
+  applyDecision(Number(entry.dataset.i), btn.classList.contains("fix") ? "fix" : "ignore");
+});
+
+// Scale the fixed 960x540 stage to fit any screen (phones included).
+function fitStage() {
+  const s = Math.min(window.innerWidth / VIEW.w, window.innerHeight / VIEW.h);
+  document.getElementById("stage").style.transform = `scale(${s})`;
+}
+window.addEventListener("resize", fitStage);
+window.addEventListener("orientationchange", fitStage);
+
 initInput();
+bindTouchControls();
+fitStage();
 toTitle();
 requestAnimationFrame(frame);

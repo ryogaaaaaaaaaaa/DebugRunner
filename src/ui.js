@@ -64,7 +64,7 @@ export function renderDebugPanel(bugs, selIndex, action) {
           </div>`;
       }
       return `
-        <div class="bug-entry ${sel}">
+        <div class="bug-entry ${sel}" data-i="${i}">
           <div class="bug-id">${bug.id} : ${bug.code}</div>
           <div class="bug-desc">${escapeHtml(bug.desc)}</div>
           ${body}

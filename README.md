@@ -6,7 +6,7 @@
 
 これは **フェーズ3まで実装した動くプロトタイプ** です。タイトル画面 → STAGE 0〜2 を通しで遊べ、バグ5種（足場判定・重力・カメラ・扉・敵AI）の「発生 → デバッグパネル → 修正/利用 → 副作用」ループと、後半の侵食演出（①違和感／②UI・ログ異変、後半ほど強まる）が入っています。
 
-**▶ プレイ（GitHub Pages）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/**
+**▶ プレイ（GitHub Pages・PC/スマホ対応）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/**
 
 - 全体のMVP設計書: [`docs/DebugRunner_MVP_Design.md`](docs/DebugRunner_MVP_Design.md)
 
@@ -60,6 +60,12 @@ npm run preview   # ビルド結果をローカル配信
 | ← → （パネル内） | FIX / IGNORE の選択 |
 | Enter | 決定 |
 | R | クリア後にリトライ |
+
+### スマホ（タッチ操作）
+PC・スマホ両対応です。タッチ端末では自動で画面下に操作ボタンが出ます。
+- 画面サイズに合わせて自動スケール（横持ち推奨。縦持ちでは回転ヒントを表示）
+- **◀ ▶**：移動／**JUMP**：ジャンプ／**⚙ DEBUG**：デバッグパネル開閉
+- デバッグパネルの **[FIX] / [IGNORE] は直接タップ**で決定。タイトルの START・クリア後の CONTINUE/RETRY もタップ可。
 
 ---
 
