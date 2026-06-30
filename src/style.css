@@ -1,0 +1,164 @@
+:root {
+  --bg: #0c0e12;
+  --fg: #d7dde2;
+  --accent: #56e39f;
+  --warn: #e3c356;
+  --err: #e35664;
+  --grid: #1a1f27;
+  --panel: rgba(12, 14, 18, 0.92);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: #05060a;
+  color: var(--fg);
+  font-family: "Courier New", ui-monospace, monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#stage {
+  position: relative;
+  width: 960px;
+  height: 540px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px #222 , 0 12px 60px rgba(0,0,0,.6);
+  image-rendering: pixelated;
+}
+
+#game {
+  display: block;
+  width: 960px;
+  height: 540px;
+  image-rendering: pixelated;
+}
+
+/* ---------- HUD ---------- */
+.hud {
+  position: absolute;
+  top: 8px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #8b95a1;
+  text-shadow: 0 1px 0 #000;
+  pointer-events: none;
+}
+#hud-stage { left: 10px; }
+#hud-build { right: 10px; color: #5a6470; }
+
+#hint {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font-size: 12px;
+  color: #4a5560;
+  pointer-events: none;
+}
+
+/* ---------- toast ---------- */
+#toast {
+  position: absolute;
+  top: 34px;
+  right: 10px;
+  background: rgba(227, 86, 100, 0.15);
+  border: 1px solid var(--err);
+  color: var(--err);
+  padding: 6px 12px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+
+/* ---------- error log ---------- */
+#log {
+  position: absolute;
+  left: 10px;
+  bottom: 28px;
+  width: 360px;
+  max-height: 130px;
+  background: rgba(5, 6, 10, 0.55);
+  border-left: 2px solid #2a323c;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow: hidden;
+  pointer-events: none;
+}
+#log-head { color: #4a5560; margin-bottom: 2px; }
+#log-body div { white-space: pre; }
+.log-info { color: #6f7a86; }
+.log-warn { color: var(--warn); }
+.log-err  { color: var(--err); }
+.log-meta { color: var(--accent); }
+
+/* ---------- debug panel ---------- */
+#debug {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 10, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(1px);
+}
+#debug-box {
+  width: 460px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 30px rgba(86, 227, 159, 0.15);
+  padding: 16px 18px;
+}
+#debug-title {
+  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: 2px;
+  border-bottom: 1px solid #2a323c;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.bug-entry {
+  border: 1px solid #2a323c;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.bug-entry.sel { border-color: var(--accent); background: rgba(86,227,159,.06); }
+.bug-id { font-size: 13px; color: var(--fg); }
+.bug-desc { font-size: 12px; color: #7f8a96; margin: 6px 0 10px; }
+.bug-actions { display: flex; gap: 10px; }
+.bug-btn {
+  flex: 1;
+  text-align: center;
+  padding: 6px 0;
+  border: 1px solid #3a434e;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #aeb7c1;
+}
+.bug-btn.fix.on { border-color: var(--accent); color: var(--accent); }
+.bug-btn.ignore.on { border-color: var(--warn); color: var(--warn); }
+.bug-status { font-size: 11px; margin-top: 8px; color: #5a6470; }
+.bug-status.resolved { color: var(--accent); }
+#debug-hint { margin-top: 6px; font-size: 11px; color: #4a5560; text-align: center; }
+
+/* ---------- clear ---------- */
+#clear {
+  position: absolute; inset: 0;
+  background: rgba(5,6,10,.85);
+  display: flex; align-items: center; justify-content: center;
+}
+#clear-box { text-align: center; }
+#clear-title { color: var(--accent); font-size: 28px; letter-spacing: 4px; }
+#clear-sub { color: #8b95a1; margin: 6px 0 16px; letter-spacing: 2px; }
+#clear-stats { color: #7f8a96; font-size: 13px; line-height: 1.8; margin-bottom: 18px; }
+#clear-retry {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  padding: 8px 20px; font-family: inherit; font-size: 13px; letter-spacing: 2px; cursor: pointer;
+}
+#clear-retry:hover { background: rgba(86,227,159,.1); }
+
+.hidden { display: none !important; }
