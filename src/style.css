@@ -143,6 +143,7 @@ html, body {
 .bug-btn.ignore.on { border-color: var(--warn); color: var(--warn); }
 .bug-status { font-size: 11px; margin-top: 8px; color: #5a6470; }
 .bug-status.resolved { color: var(--accent); }
+.bug-status.ignore-tag { color: var(--warn); }
 #debug-hint { margin-top: 6px; font-size: 11px; color: #4a5560; text-align: center; }
 
 /* ---------- clear ---------- */
@@ -160,5 +161,28 @@ html, body {
   padding: 8px 20px; font-family: inherit; font-size: 13px; letter-spacing: 2px; cursor: pointer;
 }
 #clear-retry:hover { background: rgba(86,227,159,.1); }
+
+/* ---------- incursion (演出段階②) ---------- */
+#hud-build.glitch { color: var(--err); text-shadow: 1px 0 var(--accent), -1px 0 var(--err); }
+
+/* subtle scanlines + faint flicker once the build starts noticing the tester */
+#stage.incursion1::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.018) 0px,
+    rgba(255, 255, 255, 0.018) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  animation: flicker 4s steps(40) infinite;
+  z-index: 5;
+}
+@keyframes flicker { 0%,97%,100% { opacity: .6; } 98% { opacity: .15; } 99% { opacity: .9; } }
+
+#stage.incursion2::after { animation-duration: 1.6s; }
 
 .hidden { display: none !important; }

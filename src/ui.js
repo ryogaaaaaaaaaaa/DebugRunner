@@ -26,49 +26,91 @@ function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
+// ---------- HUD ----------
+export function setStageLabel(name) { el("hud-stage").textContent = name; }
+
 // ---------- toast ----------
 export function showToast() { el("toast").classList.remove("hidden"); }
 export function hideToast() { el("toast").classList.add("hidden"); }
 
 // ---------- debug panel ----------
-// Renders the registry. `selected` action is "fix" or "ignore".
-export function renderDebugPanel(bug, selected) {
+// bugs: array of DETECTED bug objects. selIndex: highlighted entry.
+// action: 'fix' | 'ignore' for the highlighted, unresolved entry.
+export function renderDebugPanel(bugs, selIndex, action) {
   const list = el("debug-list");
-  const resolved = bug.resolved;
-  const fixOn = selected === "fix" ? "on" : "";
-  const ignoreOn = selected === "ignore" ? "on" : "";
-
-  let status = "";
-  if (bug.state === "fixed") status = `<div class="bug-status resolved">&gt; FIXED — side effect applied. corruption: ${GAME.corruption}</div>`;
-  else if (bug.state === "ignored") status = `<div class="bug-status resolved">&gt; IGNORED — bug is now yours to use.</div>`;
-  else status = `<div class="bug-status">&gt; awaiting decision...</div>`;
-
-  list.innerHTML = `
-    <div class="bug-entry sel">
-      <div class="bug-id">${bug.id} : ${bug.code}</div>
-      <div class="bug-desc">${bug.desc}</div>
-      <div class="bug-actions">
-        <div class="bug-btn fix ${fixOn}">[ FIX ]</div>
-        <div class="bug-btn ignore ${ignoreOn}">[ IGNORE ]</div>
-      </div>
-      ${status}
-    </div>`;
+  if (!bugs.length) {
+    list.innerHTML = `<div class="bug-desc" style="text-align:center">no bugs detected.<br>keep testing...</div>`;
+    return;
+  }
+  list.innerHTML = bugs
+    .map((bug, i) => {
+      const sel = i === selIndex ? "sel" : "";
+      let body;
+      if (bug.resolved) {
+        const tag = bug.state === "fixed" ? "FIXED" : "IGNORED";
+        const cls = bug.state === "fixed" ? "" : "ignore-tag";
+        body = `<div class="bug-status resolved ${cls}">&gt; ${tag}</div>`;
+      } else {
+        const fixOn = i === selIndex && action === "fix" ? "on" : "";
+        const ignoreOn = i === selIndex && action === "ignore" ? "on" : "";
+        body = `
+          <div class="bug-actions">
+            <div class="bug-btn fix ${fixOn}">[ FIX ]</div>
+            <div class="bug-btn ignore ${ignoreOn}">[ IGNORE ]</div>
+          </div>`;
+      }
+      return `
+        <div class="bug-entry ${sel}">
+          <div class="bug-id">${bug.id} : ${bug.code}</div>
+          <div class="bug-desc">${escapeHtml(bug.desc)}</div>
+          ${body}
+        </div>`;
+    })
+    .join("");
 }
 
 export function openDebug() { el("debug").classList.remove("hidden"); }
 export function closeDebug() { el("debug").classList.add("hidden"); }
 
-// ---------- clear screen ----------
-export function showClear() {
-  const route = GAME.route || "NONE";
-  const flavor =
-    route === "IGNORE"
-      ? "You used the bug. The build noticed."
-      : route === "FIX"
-      ? "You fixed it. Something else broke."
-      : "You slipped past without deciding.";
-  el("clear-stats").innerHTML =
-    `route: <b>${route}</b><br>corruption: <b>${GAME.corruption}</b><br>time: <b>${GAME.elapsed.toFixed(1)}s</b><br><br><span style="color:#56e39f">${flavor}</span>`;
+// ---------- clear / stage transition ----------
+export function showClear({ title, sub, stats, buttonLabel }) {
+  el("clear-title").textContent = title;
+  el("clear-sub").textContent = sub;
+  el("clear-stats").innerHTML = stats;
+  el("clear-retry").textContent = buttonLabel;
   el("clear").classList.remove("hidden");
 }
 export function hideClear() { el("clear").classList.add("hidden"); }
+
+// ---------- incursion (演出段階② : UI / log anomalies) ----------
+const META_LINES = [
+  ["[WARN] tester input is being logged", "warn"],
+  ["[ERROR] who is reading this console?", "err"],
+  ["[meta] the build can see the tester", "meta"],
+  ["[WARN] entity 'tester' not found in manifest", "warn"],
+  ["[meta] do not fix what is watching you", "meta"],
+];
+let metaIdx = 0;
+
+export function emitMetaLine() {
+  const [t, tone] = META_LINES[metaIdx % META_LINES.length];
+  metaIdx++;
+  log(t, tone);
+}
+
+const GLITCH = "▓▒░#@!*?".split("");
+export function glitchBuildLabel(originalText, on) {
+  const node = el("hud-build");
+  if (!on) { node.textContent = originalText; node.classList.remove("glitch"); return; }
+  node.classList.add("glitch");
+  node.textContent = originalText
+    .split("")
+    .map((c) => (c !== " " && Math.random() < 0.4 ? GLITCH[(Math.random() * GLITCH.length) | 0] : c))
+    .join("");
+}
+
+export function setIncursionClass(level) {
+  const stage = el("stage");
+  stage.classList.toggle("incursion1", level >= 1);
+  stage.classList.toggle("incursion2", level >= 2);
+}

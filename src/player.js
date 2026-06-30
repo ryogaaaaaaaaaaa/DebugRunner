@@ -31,8 +31,8 @@ export function updatePlayer(p, dt, platforms, keys) {
   p.vx = dir * SPEED;
   if (dir !== 0) p.facing = dir;
 
-  // --- gravity ---
-  p.vy = Math.min(p.vy + GRAVITY * dt, MAX_FALL);
+  // --- gravity (scaled live by the gravity bug) ---
+  p.vy = Math.min(p.vy + GRAVITY * GAME.gravityScale * dt, MAX_FALL);
 
   // --- jump ---
   if (keys.jump && p.onGround) {
