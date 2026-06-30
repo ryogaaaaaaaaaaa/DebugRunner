@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+
+# Builds the Vite app and publishes dist/ to the gh-pages branch.
+# After the first successful run, enable Pages once:
+#   Settings -> Pages -> Source: "Deploy from a branch" -> Branch: gh-pages / (root)
+
+on:
+  push:
+    branches:
+      - claude/debug-action-game-mvp-85b1js
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist

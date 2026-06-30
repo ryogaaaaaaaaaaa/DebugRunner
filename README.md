@@ -6,7 +6,19 @@
 
 これは **フェーズ3まで実装した動くプロトタイプ** です。タイトル画面 → STAGE 0〜2 を通しで遊べ、バグ5種（足場判定・重力・カメラ・扉・敵AI）の「発生 → デバッグパネル → 修正/利用 → 副作用」ループと、後半の侵食演出（①違和感／②UI・ログ異変、後半ほど強まる）が入っています。
 
+**▶ プレイ（GitHub Pages）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/**
+
 - 全体のMVP設計書: [`docs/DebugRunner_MVP_Design.md`](docs/DebugRunner_MVP_Design.md)
+
+## 公開（GitHub Pages）
+
+`claude/debug-action-game-mvp-85b1js` ブランチへ push すると、GitHub Actions（[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)）が自動でビルドし `gh-pages` ブランチへ公開します。**初回のみ** リポジトリ設定で Pages を有効化してください:
+
+1. Settings → Pages
+2. Source: **Deploy from a branch**
+3. Branch: **gh-pages** / **(root)** → Save
+
+数十秒〜数分で上記URLに反映されます。Vite の `base` は相対パス（`./`）なので、itch.io 等の静的ホストにも `dist/` をそのまま置けます。
 
 ---
 
