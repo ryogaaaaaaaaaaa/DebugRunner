@@ -68,6 +68,14 @@
 
 **次の一手（未実装）**：この覚醒版の手触りが良ければ、STAGE 1〜4にも声＋メタ事象（嘘をつくHUD、自己書き換え、演出③④の声化）を波及。トーンを進行で cold→dread に段階制御。
 
+### メタ全ステージ波及：嘘HUD／自己書き換え／声化＋トーン段階制御
+
+上記スライスの手触り評価（「きもくて笑える」＝コメ→ドレッド成功）を受け、残り3点を全編へ波及。
+- **嘘をつくHUD**（`state.js: hudTrue/hudRevealT`, `ui.js: setMeta`）：INTEGRITY表示は**ずっと嘘（100%固定＋たまに1フレだけ誤値がちらつく）**。侵食Lv2（STAGE 2 or corruption≥4）到達 or STAGE 3のUI_COLLIDER検知で `revealHud()` が発火→**グリッチ後に本当の値へスナップ**（例：修正3回→55%）、声「その数字、ずっと嘘だったんだ。ごめんね。」＋`[SYS] integrity readout desynced`。
+- **自己書き換え（decay）**（`main.js: tickDecay/drawCorruption/drawBugStains`, `ui.js: setStageLabel garble`）：`GAME.decay`（侵食＋corruption＋“置き去りバグ数”で増加）に応じ、画面全体に**ガベージ字が湧いて明滅**。放置したバグの周囲には**汚染が染み出す**（marker近傍にグリフ）。Lv2でステージ名ラベルもたまに文字化け。
+- **演出②③④の声化＋トーン段階制御**（`main.js: metaTone/metaBugDetectVoice/metaVoiceLine`）：`metaTone()` が comedy→cold→dread を進行で切替。各バグ検知に固有の声（重力「このままの方が楽しいよ?」／敵「それ、起こさないで。ね?」／UI「気づいちゃったね」／自己「見つけた。未登録のエンティティ。きみだ。」）。侵食中は定期メタログに加えて**確率で肉声**（Lv2は6割）。ラスト自己ハンマー時に dread ボイス。
+- 検証（自動）：全ハンマー修正パスで STAGE 2到達時 `hudTrue=true`／`decay>0`、修正3回で嘘HUDが `100%→55%` にスナップ、ランタイムエラー0。
+
 ---
 
 

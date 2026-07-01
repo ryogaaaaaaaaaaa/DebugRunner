@@ -209,6 +209,9 @@ html, body {
 
 /* ---------- incursion (演出段階②) ---------- */
 #hud-build.glitch { color: var(--err); text-shadow: 1px 0 var(--accent), -1px 0 var(--err); }
+#hud-stage.glitch { color: var(--err); text-shadow: 1px 0 var(--accent), -1px 0 var(--err); }
+/* the moment the faked INTEGRITY readout is exposed */
+#hud-meta.hud-lie-reveal { color: var(--err); opacity: 1; text-shadow: 0 0 8px rgba(227,86,100,0.8); }
 
 /* subtle scanlines + faint flicker once the build starts noticing the tester */
 #stage.incursion1::after {

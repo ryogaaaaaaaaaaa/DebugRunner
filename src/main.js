@@ -145,6 +145,63 @@ function updateIncursion() {
   // 演出段階③: the debug panel itself starts corrupting on the UI stage.
   GAME.panelCorrupt = GAME.stageIndex >= 3 || GAME.corruption >= 6;
   setIncursionClass(lvl);
+  // the faked INTEGRITY readout can't hold up once the build is deeply unstable
+  if (lvl >= 2) revealHud();
+}
+
+// tone that the build speaks in — warms up comedic, cools, then dreads
+function metaTone() {
+  if (GAME.incursion >= 2 || GAME.corruption >= 6) return "dread";
+  if (GAME.incursion >= 1 || GAME.stageIndex >= 1) return "cold";
+  return "comedy";
+}
+
+// the build's reaction the moment a bug is detected (per bug, tone-scaled)
+function metaBugDetectVoice(b) {
+  const tone = metaTone();
+  switch (b.code) {
+    case "PLATFORM_COLLISION": speak("お、バグだ。直す？ それとも……使う?", "comedy", { hold: 3.2 }); break;
+    case "GRAVITY_SCALE": speak("ふわふわするね。……このままの方が、楽しいよ?", tone, { hold: 3 }); break;
+    case "CAMERA_CLAMP": speak("見えちゃった。……見せたく なかったのに。", tone, { hold: 3 }); break;
+    case "DOOR_STATE": speak("その扉、開けない方が いいと思うな。", tone, { hold: 3 }); break;
+    case "ENEMY_AI": speak("それ、起こさないで。……ね?", tone, { hold: 3 }); break;
+    case "UI_COLLIDER": speak("UIが、さわれる。……気づいちゃったね。", tone, { hold: 3 }); revealHud(); break;
+    case "TESTER_PRESENCE": speak("見つけた。……未登録の エンティティ。きみだ。", "dread", { hold: 3.5 }); break;
+  }
+}
+
+// expose the true integrity: the readout was a lie the whole time (演出③)
+function revealHud() {
+  if (GAME.hudTrue) return;
+  GAME.hudTrue = true;
+  GAME.hudRevealT = 1.2;
+  shake(8, 0.3); flash(0.18, "#e35664", 0.4); glitch("tear", 0.4, 1); sfx("glitch");
+  log(`[SYS] integrity readout desynced — actual: ${integrity()}%`, "err");
+  speak("……その数字、ずっと 嘘だったんだ。ごめんね。", metaTone(), { hold: 3.2 });
+}
+
+// occasional spoken meta line (演出② voice-ified; deepens with incursion)
+const META_VOICE = {
+  cold: [
+    "見てるよ。ずっと。",
+    "その入力、記録してる。",
+    "直さないんだね。……別に、いいけど。",
+    "ここ、誰が読んでるんだろうね。……きみ?",
+  ],
+  dread: [
+    "きみ、ほんとうに テスター?",
+    "manifestに きみの名前が ない。",
+    "直さないで。……それ、ぼくなんだ。",
+    "もう、戻れないよ。",
+    "見ないで。ぼくを、見ないで。",
+  ],
+};
+let metaVoiceIdx = 0;
+function metaVoiceLine() {
+  const dread = metaTone() === "dread";
+  const pool = dread ? META_VOICE.dread : META_VOICE.cold;
+  speak(pool[metaVoiceIdx % pool.length], dread ? "dread" : "cold", { hold: 2.8 });
+  metaVoiceIdx++;
 }
 
 // ---------------- update ----------------
@@ -247,17 +304,17 @@ function update(dt) {
       // spectacle: the bug "breaks" the screen when it appears
       if (b.code === "TESTER_PRESENCE") { glitch("invert", 0.6, 1); shake(14, 0.5); flash(0.25, "#e35664", 0.5); }
       else { glitch("tear", 0.4, 1); shake(9, 0.28); }
-      // meta: the build reacts to the first bug (STAGE 0 teach)
-      if (b.code === "PLATFORM_COLLISION") {
-        speak("お、バグだ。直す？ それとも……使う?", "comedy", { hold: 3.2 });
-      }
+      // meta: the build reacts, in its own voice, to each bug
+      metaBugDetectVoice(b);
     }
   }
 
   updateCamera(dt);
   tickFades(dt);
   tickIncursion(dt);
+  tickDecay(dt);
   if (GAME.flash > 0) GAME.flash = Math.max(0, GAME.flash - dt);
+  if (GAME.hudRevealT > 0) GAME.hudRevealT = Math.max(0, GAME.hudRevealT - dt);
 
   // goal? (the final stage has none — it ends on the decision)
   if (stage.goal && aabb(player, stage.goal)) onGoal();
@@ -420,11 +477,22 @@ function tickFades(dt) {
   }
 }
 
+// self-rewrite: how strongly the build is visibly decaying (drives drawCorruption)
+function tickDecay(dt) {
+  const leftBehind = stage.bugs.filter((b) => b.state === "active" && b.marker && player.x > b.marker.x + 120).length;
+  const target = Math.min(1, GAME.incursion * 0.3 + GAME.corruption * 0.05 + leftBehind * 0.14);
+  GAME.decay += (target - GAME.decay) * Math.min(1, dt * 2);
+}
+
 function tickIncursion(dt) {
   if (GAME.incursion < 1) return;
-  // occasional unsettling log line
+  // occasional unsettling log line — and, increasingly, a spoken one
   metaTimer -= dt;
-  if (metaTimer <= 0) { emitMetaLine(); metaTimer = 6 + Math.random() * 5; }
+  if (metaTimer <= 0) {
+    emitMetaLine();
+    if (Math.random() < (GAME.incursion >= 2 ? 0.6 : 0.3)) metaVoiceLine();
+    metaTimer = 6 + Math.random() * 5;
+  }
   // brief HUD build-label glitch
   glitchTimer -= dt;
   if (glitchTimer <= 0) {
@@ -592,6 +660,7 @@ function applyHammer(t) {
   }
   if (t.kind === "self") {
     sfx("ding"); shake(16, 0.4); hitstop(0.08); flash(0.3, "#e35664", 0.5); glitch("invert", 0.5, 1);
+    speak("……ありがとう。これで、安定するよ。", "dread", { hold: 1.6 });
     t.ref.fix(stage);
     startEnding("patched"); // 演出④: you patched yourself out
     return;
@@ -647,12 +716,14 @@ function render() {
   drawHazards();
   drawEnemies();
   drawFragments();
+  drawBugStains();      // self-rewrite: garbage spreading from bugs you left behind
   drawNotes();
   drawGoal();
   drawPlayer();
   drawParticles(ctx);
   drawFix();
   ctx.restore();
+  drawCorruption();     // self-rewrite: decay field over the whole build
   drawTriggerHint();
   setMeta(GAME.fragments, FRAGMENT_TOTAL, integrity());
   if (GAME.flash > 0) {
@@ -868,6 +939,46 @@ function drawFix() {
     ctx.fillStyle = ok ? (corrupt ? "#e35664" : "#56e39f") : "#e35664";
     ctx.fillText(ok ? (corrupt ? "✓ p4tch3d" : "✓ patched") : "✗ not a bug", bx + 8, by + 48);
   }
+}
+
+const CORRUPT_GLYPHS = "▓▒░#@!*?/\\<>=;:".split("");
+
+// self-rewrite: garbage glyphs spreading from any bug the tester walked past
+function drawBugStains() {
+  ctx.font = "11px 'Courier New', monospace";
+  ctx.textAlign = "left";
+  for (const b of stage.bugs) {
+    if (b.state !== "active" || !b.marker) continue;
+    if (player.x < b.marker.x + 120) continue; // only once you've left it behind
+    for (let i = 0; i < 10; i++) {
+      if (Math.random() < 0.55) continue; // flicker
+      ctx.fillStyle = Math.random() < 0.5 ? "rgba(227,86,100,0.45)" : "rgba(86,227,159,0.3)";
+      ctx.fillText(
+        CORRUPT_GLYPHS[(Math.random() * CORRUPT_GLYPHS.length) | 0],
+        b.marker.x + (Math.random() - 0.5) * 110,
+        b.marker.y + (Math.random() - 0.75) * 110
+      );
+    }
+  }
+}
+
+// self-rewrite: a decay field of garbage over the whole screen; grows with GAME.decay
+function drawCorruption() {
+  const d = GAME.decay;
+  if (d <= 0.03) return;
+  const n = Math.floor(d * 44);
+  ctx.save();
+  ctx.font = "12px 'Courier New', monospace";
+  ctx.textAlign = "left";
+  const t = performance.now() / 800;
+  for (let i = 0; i < n; i++) {
+    if (Math.random() < 0.5) continue; // flicker
+    const rx = (Math.sin(i * 12.9898 + t) * 0.5 + 0.5);
+    const ry = (Math.sin(i * 78.233 + t * 1.7) * 0.5 + 0.5);
+    ctx.fillStyle = Math.random() < 0.3 ? "rgba(227,86,100,0.5)" : "rgba(86,227,159,0.28)";
+    ctx.fillText(CORRUPT_GLYPHS[(Math.random() * CORRUPT_GLYPHS.length) | 0], rx * VIEW.w, ry * VIEW.h);
+  }
+  ctx.restore();
 }
 
 function drawNotes() {

@@ -27,10 +27,39 @@ function escapeHtml(s) {
 }
 
 // ---------- HUD ----------
-export function setStageLabel(name) { el("hud-stage").textContent = name; }
+export function setStageLabel(name) {
+  const node = el("hud-stage");
+  if (!node) return;
+  // self-rewrite: the stage label garbles once the build starts decaying
+  if (GAME.incursion >= 2 && Math.random() < 0.06) {
+    node.textContent = garble(name, 0.35);
+    node.classList.add("glitch");
+  } else {
+    node.textContent = name;
+    node.classList.remove("glitch");
+  }
+}
+
+const GARBLE_CHARS = "▓▒░#@!?%".split("");
+function garble(s, p) {
+  return Array.from(s).map((c) => (c !== " " && Math.random() < p ? GARBLE_CHARS[(Math.random() * GARBLE_CHARS.length) | 0] : c)).join("");
+}
+
+// The INTEGRITY readout is a LIE until the build is forced to reveal it.
 export function setMeta(fragments, total, integ) {
   const node = el("hud-meta");
-  if (node) node.innerHTML = `◈ ${fragments}/${total} &nbsp; INTEGRITY ${integ}%`;
+  if (!node) return;
+  let shown;
+  if (GAME.hudTrue) {
+    shown = integ + "%";
+  } else if (GAME.incursion >= 1 && Math.random() < 0.05) {
+    shown = (82 + (Math.random() * 18 | 0)) + "%"; // a brief wrong flicker — something's off
+  } else {
+    shown = "100%"; // reassuring lie
+  }
+  if (GAME.hudRevealT > 0 && Math.random() < 0.55) shown = garble(shown, 0.5); // reveal glitch
+  node.innerHTML = `◈ ${fragments}/${total} &nbsp; INTEGRITY ${shown}`;
+  node.classList.toggle("hud-lie-reveal", GAME.hudRevealT > 0);
 }
 
 // ---------- title ----------

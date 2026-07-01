@@ -31,6 +31,11 @@ export const GAME = {
   muted: false,
   checkpoint: null,  // {x,y} last safe grounded spot in the current stage
   flash: 0,          // red hit/respawn flash timer
+
+  // meta — the build lies and decays
+  hudTrue: false,    // false = the INTEGRITY readout is faked (shows a lie)
+  hudRevealT: 0,     // reveal glitch animation timer
+  decay: 0,          // 0..1 visible "the build is rewriting itself" intensity
 };
 
 // Reset everything for a fresh run from STAGE 0.
@@ -44,6 +49,9 @@ export function resetGame() {
   GAME.won = false;
   GAME.startTime = 0;
   GAME.elapsed = 0;
+  GAME.hudTrue = false;
+  GAME.hudRevealT = 0;
+  GAME.decay = 0;
   resetStageModifiers();
 }
 
