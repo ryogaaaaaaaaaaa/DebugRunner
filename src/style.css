@@ -72,6 +72,28 @@ html, body {
   pointer-events: none;
 }
 
+/* ---------- the build's voice (second-person, meta) ---------- */
+#voice {
+  position: absolute;
+  left: 0; right: 0; bottom: 92px;
+  z-index: 8;
+  text-align: center;
+  padding: 0 48px;
+  font-size: 17px; letter-spacing: 1px; line-height: 1.4;
+  color: #d7dde2;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.95), 0 2px 4px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+#voice.show { opacity: 1; }
+#voice.voice-comedy { color: #e6ead0; }
+#voice.voice-cold { color: #8fb8d8; }
+#voice.voice-dread {
+  color: var(--err);
+  text-shadow: 0 0 12px rgba(227, 86, 100, 0.7), 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
 /* ---------- toast ---------- */
 #toast {
   position: absolute;

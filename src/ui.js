@@ -151,3 +151,46 @@ export function setIncursionClass(level) {
   stage.classList.toggle("incursion1", level >= 1);
   stage.classList.toggle("incursion2", level >= 2);
 }
+
+// ---------- the build's voice (second-person, meta) ----------
+// A caption that types itself in and speaks TO the tester. Tone shifts the
+// look from warm/comedic to cold to dread. Queued so lines don't clobber.
+let voiceQ = [];
+let voiceCur = null;
+const GARBLE = "▓▒░#@!?".split("");
+
+export function speak(text, tone = "cold", opts = {}) {
+  voiceQ.push({ text, tone, hold: opts.hold ?? 2.4 });
+}
+export function clearVoice() {
+  voiceQ = []; voiceCur = null;
+  const n = el("voice");
+  if (n) { n.className = ""; n.textContent = ""; }
+}
+export function tickVoice(dt) {
+  const n = el("voice");
+  if (!n) return;
+  if (!voiceCur) {
+    if (!voiceQ.length) return;
+    voiceCur = voiceQ.shift();
+    voiceCur.t = 0; voiceCur.shown = -1;
+    n.className = "show voice-" + voiceCur.tone;
+  }
+  const v = voiceCur;
+  v.t += dt;
+  const cps = 32; // typing speed
+  const target = Math.min(v.text.length, Math.floor(v.t * cps));
+  if (target !== v.shown) {
+    v.shown = target;
+    let s = v.text.slice(0, target);
+    // dread garbles the last character as it types (unstable voice)
+    if (v.tone === "dread" && target > 0 && target < v.text.length && Math.random() < 0.5) {
+      s = s.slice(0, -1) + GARBLE[(Math.random() * GARBLE.length) | 0];
+    }
+    n.textContent = s;
+  }
+  if (v.shown >= v.text.length && v.t > v.text.length / cps + v.hold) {
+    voiceCur = null;
+    if (!voiceQ.length) n.className = "";
+  }
+}

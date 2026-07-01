@@ -13,21 +13,33 @@ import { log } from "./ui.js";
 
 const find = (stage, id) => stage.platforms.find((p) => p.id === id);
 
-// ===== STAGE 0 — "TEST BUILD v0.3.1" : teaches fix-vs-use with BUG#01 =====
+// ===== STAGE 0 — "TEST BUILD v0.3.1" : teaches fix-vs-use, then the meta hook =====
+// First impression stage. Two beats:
+//   1. BUG#01 (platform collider) — the hammer-fix teach (optional shortcut).
+//   2. The PIT — no floor across it. Crossing it triggers a FAKE CRASH: the game
+//      "throws", a real-looking stack trace slams the screen... and the trace
+//      lines settle into the pit as the stepping stones you walk across.
+//      The build crashed. You keep running on the wreckage. (handled in main.js)
 function buildStage0() {
   const stage = {
     name: "STAGE 0 — TEST BUILD",
-    world: { w: 1600, h: 720 },
+    world: { w: 1900, h: 720 },
     spawn: { x: 60, y: 520 },
-    goal: { x: 1500, y: 120, w: 26, h: 480 },
+    goal: { x: 1800, y: 120, w: 26, h: 480 },
+    // the fake crash fires when the tester steps up to the edge of the pit
+    crashZone: { triggerX: 505 },
     platforms: [
-      { id: "ground_left",  x: 0,    y: 600, w: 420, h: 120, solid: true },
-      { id: "ground_right", x: 1100, y: 600, w: 500, h: 120, solid: true },
-      { id: "lower",        x: 430,  y: 655, w: 690, h: 65,  solid: true },
-      { id: "buggy",        x: 470,  y: 465, w: 380, h: 24,  solid: true, bug: true },
-      { id: "step",         x: 900,  y: 545, w: 150, h: 20,  solid: true },
-      { id: "decor",        x: 690,  y: 330, w: 90,  h: 20,  solid: true, sideEffect: true },
-      { id: "end_wall",     x: 1576, y: 0,   w: 24,  h: 720, solid: true },
+      { id: "ground_start", x: 0,    y: 600, w: 560, h: 120, solid: true },
+      // BUG#01 shortcut platform up-high (optional; the teach, not the path)
+      { id: "buggy",        x: 300,  y: 470, w: 200, h: 24,  solid: true, bug: true },
+      { id: "decor",        x: 300,  y: 360, w: 90,  h: 20,  solid: true, sideEffect: true },
+      // THE PIT (x 560..1200) — no normal floor. The crash trace fills it.
+      // crash platforms: intangible + invisible until the "crash" reveals them.
+      { id: "trace0", x: 610,  y: 545, w: 150, h: 20, solid: false, crash: true, label: "at Stage.update (build.js:512)" },
+      { id: "trace1", x: 800,  y: 478, w: 160, h: 20, solid: false, crash: true, label: "at Tester.step (runner.js:404)" },
+      { id: "trace2", x: 1005, y: 545, w: 160, h: 20, solid: false, crash: true, label: "at frame (main.js:66)" },
+      { id: "ground_far",   x: 1200, y: 600, w: 700, h: 120, solid: true },
+      { id: "end_wall",     x: 1876, y: 0,   w: 24,  h: 720, solid: true },
     ],
     bugs: [],
   };
@@ -36,7 +48,7 @@ function buildStage0() {
     {
       id: "BUG#01", code: "PLATFORM_COLLISION",
       desc: "// platform collider disabled? falls right through. -kj",
-      state: "dormant", triggerX: 360,
+      state: "dormant", triggerX: 200,
       marker: { x: 372, y: 566 }, fixLine: "collider = solid;",
       activate(s) {
         this.state = "active";

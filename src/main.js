@@ -10,8 +10,9 @@ import {
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
   showTitle, hideTitle,
   showEnding, hideEnding, pushEndingLine, showEndingRestart,
-  setMeta,
+  setMeta, speak, tickVoice, clearVoice,
 } from "./ui.js";
+import { loadSave, writeSave } from "./save.js";
 
 const integrity = () => Math.max(0, 100 - GAME.corruption * 15);
 
@@ -31,6 +32,22 @@ let endKind, endTimer, endStep, endLines, endDoneAt, endRestartShown, endBase, e
 let fixState = null;      // hammer-fix in progress: { target, t }
 let fixPrompt = null;     // hammerable target currently in range (for the prompt)
 const FIX_DUR = 1.35;
+
+// --- meta: the build remembers the tester across runs ---
+let SAVE = loadSave();
+
+// --- meta: the fake crash you can stand on (STAGE 0) ---
+let crash = null;         // { t } while the "crash" plays out, then null once done
+const CRASH_REVEAL = 1.5; // seconds the crash overlay holds before the trace lands
+const CRASH_TRACE = [
+  "Uncaught TypeError: Cannot read properties of null (reading 'ground')",
+  "    at Stage.update (build.js:512)",
+  "    at Tester.step (runner.js:404)",
+  "    at frame (main.js:66)",
+  "    at window.requestAnimationFrame (<anonymous>)",
+  "",
+  "[build] the floor was never there.",
+];
 
 // expose a tiny debug handle (it IS a debug game) — handy for testing/tinkering
 window.__DR = { GAME, get stage() { return stage; }, get player() { return player; } };
@@ -54,7 +71,20 @@ function startRun() {
   GAME.startTime = performance.now();
   log("[INFO] build v0.3.1 (TEST) loaded", "info");
   log("[INFO] tester session started", "info");
+
+  // the build remembers you — bump the run count and greet accordingly
+  SAVE.runs = (SAVE.runs || 0) + 1;
+  writeSave(SAVE);
   loadStage(0);
+  if (SAVE.runs <= 1) {
+    speak("……テスター、来たね。このビルド、まだ不安定なんだ。よろしく。", "comedy", { hold: 3 });
+  } else if (SAVE.lastChoice === "use") {
+    speak("おかえり、テスター。前回は……直さなかったね。", "cold", { hold: 3 });
+  } else if (SAVE.lastChoice === "fix") {
+    speak("また来たんだ。前回はちゃんと全部直してくれたのに。", "comedy", { hold: 3 });
+  } else {
+    speak(`おかえり、テスター。${SAVE.runs}回目だね。`, "cold", { hold: 3 });
+  }
 }
 
 // Prototype labs (?lab / ?lab=hammer) — standalone design experiments.
@@ -85,6 +115,8 @@ function applyStage(s) {
   phase = "play";
   metaTimer = 0; glitchTimer = 0; glitchOn = false;
 
+  crash = null;
+  clearVoice();
   setStageLabel(s.name);
   document.body.classList.toggle("stage-ui", s.stageUi === true);
   hideToast();
@@ -151,6 +183,12 @@ function update(dt) {
   fixPrompt = nearestFixTarget();
   if (fixPrompt && (justPressed("interact") || justPressed("debug"))) { startFix(fixPrompt); return; }
 
+  // meta signature: the fake crash you can stand on (STAGE 0)
+  if (stage.crashZone && !crash && !stage.crashZone.done && player.x > stage.crashZone.triggerX) {
+    triggerCrash();
+  }
+  if (crash) { tickCrash(dt); return; } // world frozen while the "crash" plays
+
   // gameplay — frozen enemies act as solid platforms; woken ones don't block.
   updateEnemies(dt);
   const solids = stage.platforms.concat(stage.enemies);
@@ -209,6 +247,10 @@ function update(dt) {
       // spectacle: the bug "breaks" the screen when it appears
       if (b.code === "TESTER_PRESENCE") { glitch("invert", 0.6, 1); shake(14, 0.5); flash(0.25, "#e35664", 0.5); }
       else { glitch("tear", 0.4, 1); shake(9, 0.28); }
+      // meta: the build reacts to the first bug (STAGE 0 teach)
+      if (b.code === "PLATFORM_COLLISION") {
+        speak("お、バグだ。直す？ それとも……使う?", "comedy", { hold: 3.2 });
+      }
     }
   }
 
@@ -278,6 +320,9 @@ function startEnding(kind) {
   endLines = buildEndingLines(kind);
   sfx(kind === "patched" ? "patch" : "stinger");
   hideToast();
+  // the build remembers your final answer
+  if (kind === "patched") SAVE.everPatched = true; else SAVE.everRefused = true;
+  writeSave(SAVE);
   log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
 }
 
@@ -414,6 +459,15 @@ function onGoal() {
   GAME.routes[GAME.stageIndex] = summary;
   log("[META] tester reached goal. build flagged for review.", "meta");
 
+  // meta: the build remembers how you treated STAGE 0's bug
+  if (GAME.stageIndex === 0) {
+    const fixed = stage.bugs[0] && stage.bugs[0].state === "fixed";
+    SAVE.lastChoice = fixed ? "fix" : "use";
+    writeSave(SAVE);
+    if (fixed) speak("直したね。……えらい。全部そうしてくれる?", "comedy", { hold: 3 });
+    else speak("直さないで進んだね。……覚えておくよ。", "cold", { hold: 3 });
+  }
+
   if (GAME.stageIndex < STAGE_COUNT - 1) {
     phase = "cleared";
     showClear({
@@ -545,11 +599,40 @@ function applyHammer(t) {
   // kind === 'bug'
   t.ref.fix(stage);
   sfx("ding"); fixJuice(tx, ty);
+  if (t.code === "PLATFORM_COLLISION") speak("……律儀だね。ちゃんと直すんだ、君は。", "cold", { hold: 3 });
   hideToastIfClear();
   updateIncursion();
 }
 function hideToastIfClear() {
   if (stage.bugs.every((b) => b.state !== "active")) hideToast();
+}
+
+// ---------------- fake crash you can stand on (meta signature) ----------------
+function triggerCrash() {
+  crash = { t: 0 };
+  sfx("stinger");
+  shake(22, 0.6); hitstop(0.12); flash(0.32, "#e35664", 0.6); glitch("invert", 0.7, 1);
+  log("[FATAL] Uncaught TypeError: reading 'ground' of null", "err");
+}
+function tickCrash(dt) {
+  crash.t += dt;
+  // rolling tears while the "crash" is on screen
+  if (crash.t < CRASH_REVEAL && Math.random() < 0.25) glitch("tear", 0.2, 1);
+  if (crash.t >= CRASH_REVEAL) revealCrash();
+}
+function revealCrash() {
+  // the stack-trace lines settle into the pit as the stepping stones
+  for (const pl of stage.platforms) {
+    if (!pl.crash) continue;
+    pl.solid = true; pl.revealed = true;
+    burst(pl.x + pl.w / 2, pl.y, { n: 9, color: ["#e35664", "#d7dde2"], spd: 200, life: 0.5, grav: 600 });
+  }
+  stage.crashZone.done = true;
+  crash = null;
+  shake(11, 0.3); flash(0.2, "#e35664", 0.4); sfx("glitch");
+  log("[FATAL] build crashed. tester still running.", "err");
+  speak("……あ。落ちた。", "comedy", { hold: 1.6 });
+  speak("……いや。まだ動いてる。君が。", "cold", { hold: 3.2 });
 }
 
 // ---------------- render ----------------
@@ -576,6 +659,7 @@ function render() {
     ctx.fillStyle = `rgba(227,86,100,${GAME.flash * 0.55})`;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
   }
+  drawCrashOverlay(); // fake crash — screen space, under the postFX glitch
   postFX(ctx, VIEW.w, VIEW.h); // tear / invert / flash — the game "breaking"
 }
 
@@ -633,6 +717,8 @@ function drawPlatforms() {
     if (pl.id === "end_wall") continue; // invisible boundary
     // UI-collider platforms: only visible once solidified (or while fading out)
     if (pl.uiCollider && !pl.solid && !pl.fading) continue;
+    // crash-trace platforms: invisible until the "crash" drops them into the pit
+    if (pl.crash) { if (pl.revealed) drawCrashPlatform(pl); continue; }
     const a = pl.alpha ?? 1;
     if (a <= 0) continue;
     if (pl.ui) { drawUiPlatform(pl, a); continue; }
@@ -674,6 +760,39 @@ function drawUiPlatform(pl, a) {
   ctx.fillText(pl.label, pl.x + pl.w / 2, pl.y + pl.h / 2 + 1);
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   ctx.globalAlpha = 1;
+}
+
+// a stack-trace line that "crashed" into the pit and became a solid platform
+function drawCrashPlatform(pl) {
+  const j = (Math.sin(performance.now() / 90 + pl.x) * 1.5) | 0;
+  ctx.fillStyle = "rgba(227,86,100,0.14)";
+  ctx.fillRect(pl.x + j, pl.y, pl.w, pl.h);
+  ctx.strokeStyle = "#e35664";
+  ctx.strokeRect(pl.x + 0.5, pl.y + 0.5, pl.w - 1, pl.h - 1);
+  ctx.fillStyle = "#e79aa0";
+  ctx.font = "9px 'Courier New', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(pl.label, pl.x + pl.w / 2, pl.y + pl.h / 2 + 1);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+// the fake crash overlay (screen space) — a real-looking uncaught exception
+function drawCrashOverlay() {
+  if (!crash) return;
+  const fade = Math.min(1, crash.t / 0.12);
+  ctx.save();
+  ctx.fillStyle = `rgba(6,4,6,${0.9 * fade})`;
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  const shown = Math.min(CRASH_TRACE.length, Math.floor(crash.t * 12));
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  for (let i = 0; i < shown; i++) {
+    const line = CRASH_TRACE[i];
+    if (i === 0) { ctx.fillStyle = "#ff5f6e"; ctx.font = "bold 15px 'Courier New', monospace"; }
+    else if (line.startsWith("[build]")) { ctx.fillStyle = "#e3c356"; ctx.font = "13px 'Courier New', monospace"; }
+    else { ctx.fillStyle = "#b98b8f"; ctx.font = "13px 'Courier New', monospace"; }
+    ctx.fillText(line, 56, 130 + i * 26);
+  }
+  ctx.restore();
 }
 
 function drawHazards() {
@@ -835,6 +954,7 @@ function frame(now) {
   last = now;
   if (dt > 0.05) dt = 0.05;
   updateFX(dt);                 // FX keep animating even during hitstop
+  tickVoice(dt);                // the build's voice types independent of world time
   update(frozen() ? 0 : dt);    // hitstop freezes the world for a few frames
   render();
   clearPressed();
