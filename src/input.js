@@ -8,6 +8,7 @@ const MAP = {
   Space: "jump", ArrowUp: "jump", KeyW: "jump",
   ArrowDown: "down", KeyS: "down",
   Tab: "debug",
+  KeyE: "interact",
   Enter: "confirm",
   KeyR: "retry",
   Escape: "pause",

@@ -398,6 +398,39 @@ export function buildLab() {
   return stage;
 }
 
+// ===== HAMMER LAB — "where's the bug?" + physical fix =====
+// Fixing is diegetic: walk up to the glitching thing and hammer it (a tiny
+// console pops up and rewrites the code). Two things flicker — only one is the
+// real bug (it misbehaves: you fall through it). The decoy is fine; hammering
+// it just goes "tonk, not a bug". Open with ?lab=hammer.
+export function buildLabHammer() {
+  const stage = {
+    name: "LAB — HAMMER FIX",
+    lab: true,
+    world: { w: 1214, h: 720 },
+    spawn: { x: 60, y: 520 },
+    goal: { x: 1120, y: 400, w: 20, h: 160 },
+    platforms: [
+      { id: "ground_start", x: 0, y: 560, w: 480, h: 160, solid: true },
+      // decoy: flickers but is perfectly solid (a red herring)
+      { id: "decoy", x: 200, y: 490, w: 120, h: 20, solid: true, glitchy: true,
+        hammerable: true, real: false, fixLine: "// looks fine to me -kj" },
+      // the real bug: a bridge across the pit with its collider disabled
+      // (glitches AND you fall through it). Hammer it solid to cross.
+      { id: "bridge", x: 480, y: 540, w: 260, h: 20, solid: false, glitchy: true,
+        hammerable: true, real: true, fixLine: "collider = solid;" },
+      { id: "ground_far", x: 740, y: 560, w: 474, h: 160, solid: true },
+      { id: "end_wall", x: 1190, y: 0, w: 24, h: 720, solid: true },
+    ],
+    notes: [{ x: 90, y: 430, text: "something here falls through... which one is the bug?" }],
+    enemies: [],
+    fragments: [],
+    hazards: [],
+    bugs: [],
+  };
+  return stage;
+}
+
 export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 

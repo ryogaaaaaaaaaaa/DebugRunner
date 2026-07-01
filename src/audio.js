@@ -70,6 +70,9 @@ export function sfx(name) {
     case "stinger":  tone({ freq: 440, type: "sawtooth", dur: 0.5, gain: 0.16 }); tone({ freq: 466, type: "sawtooth", dur: 0.5, gain: 0.16 }); tone({ freq: 233, type: "sawtooth", dur: 0.6, gain: 0.14 }); break;
     case "patch":    noise({ dur: 0.9, gain: 0.22, lp: 3000 }); tone({ freq: 520, type: "sawtooth", slideTo: 40, dur: 0.9, gain: 0.2 }); break;
     case "select":   tone({ freq: 700, type: "square", dur: 0.03, gain: 0.12 }); break;
+    case "tap":      tone({ freq: 220, type: "square", dur: 0.05, gain: 0.2 }); noise({ dur: 0.04, gain: 0.12, lp: 2200 }); break;
+    case "ding":     tone({ freq: 880, type: "square", dur: 0.06, gain: 0.2 }); tone({ freq: 1320, type: "square", dur: 0.14, gain: 0.2, delay: 0.06 }); break;
+    case "tonk":     tone({ freq: 150, type: "square", slideTo: 90, dur: 0.16, gain: 0.2 }); break;
     default: break;
   }
 }

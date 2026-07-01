@@ -1,6 +1,6 @@
 import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
 import { initInput, justPressed, clearPressed, bindTouchControls } from "./input.js";
-import { buildStage, buildLab, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
+import { buildStage, buildLab, buildLabHammer, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import { ensureAudio, sfx } from "./audio.js";
 import {
@@ -27,6 +27,9 @@ let prevPausePhase;   // phase to return to when unpausing
 let panelSel, panelAction;
 let metaTimer, glitchTimer, glitchOn;
 let endKind, endTimer, endStep, endLines, endDoneAt, endRestartShown, endBase, endOverlayAt;
+let fixState = null;      // hammer-fix in progress: { target, t }
+let fixPrompt = null;     // hammerable target currently in range (for the prompt)
+const FIX_DUR = 1.35;
 
 // expose a tiny debug handle (it IS a debug game) — handy for testing/tinkering
 window.__DR = { GAME, get stage() { return stage; }, get player() { return player; } };
@@ -53,8 +56,10 @@ function startRun() {
   loadStage(0);
 }
 
-// Prototype lab (?lab) — a standalone design-experiment stage.
-function startLab() {
+// Prototype labs (?lab / ?lab=hammer) — standalone design experiments.
+let labKind = "paradox";
+function startLab(kind) {
+  labKind = kind || labKind;
   ensureAudio();
   hideTitle();
   resetGame();
@@ -62,10 +67,11 @@ function startLab() {
   clearLog();
   hideClear();
   hideEnding();
+  fixState = null;
   GAME.startTime = performance.now();
   GAME.stageIndex = 1; // mild incursion flavor
-  log("[INFO] prototype: paradox slice loaded", "info");
-  applyStage(buildLab());
+  log(`[INFO] prototype: ${labKind} lab loaded`, "info");
+  applyStage(labKind === "hammer" ? buildLabHammer() : buildLab());
 }
 
 function applyStage(s) {
@@ -136,8 +142,15 @@ function update(dt) {
     else { enterPause(); return; }
   }
 
-  // debug panel toggle
-  if (justPressed("debug")) {
+  // hammer-fix interaction (stages with hammerable objects — the prototype).
+  // Here the "fix button" (E / Tab / ⚙) hammers the nearby glitchy object
+  // instead of opening the panel.
+  if (hasHammerables()) {
+    if (fixState) { tickFix(dt); return; }
+    fixPrompt = nearestHammerTarget();
+    if (fixPrompt && (justPressed("interact") || justPressed("debug"))) { startFix(fixPrompt); return; }
+  } else if (justPressed("debug")) {
+    // debug panel toggle (normal stages)
     GAME.paused = !GAME.paused;
     if (GAME.paused) {
       openDebug();
@@ -394,13 +407,16 @@ function tickIncursion(dt) {
 function onGoal() {
   if (stage.lab) { // prototype: the finale is just a result card
     phase = "won";
+    const isHammer = labKind === "hammer";
     showClear({
       title: "PROTOTYPE CLEAR",
-      sub: "paradox slice",
-      stats: `◈ <b>${GAME.fragments}/1</b> recovered &nbsp; time <b>${GAME.elapsed.toFixed(1)}s</b><br><br>` +
-        (GAME.fragments
-          ? `<span style="color:#56e39f">you took the fragment in low-g, then patched to cross.</span>`
-          : `<span style="color:#e3c356">you patched first — the fragment was out of reach.</span>`),
+      sub: isHammer ? "hammer fix" : "paradox slice",
+      stats: isHammer
+        ? `you found the real bug and hammered it solid.<br>time <b>${GAME.elapsed.toFixed(1)}s</b>`
+        : `◈ <b>${GAME.fragments}/1</b> recovered &nbsp; time <b>${GAME.elapsed.toFixed(1)}s</b><br><br>` +
+          (GAME.fragments
+            ? `<span style="color:#56e39f">you took the fragment in low-g, then patched to cross.</span>`
+            : `<span style="color:#e3c356">you patched first — the fragment was out of reach.</span>`),
       buttonLabel: "RUN AGAIN  [R]",
     });
     return;
@@ -464,6 +480,42 @@ function updatePauseLabels() {
   if (m) m.textContent = `SOUND: ${GAME.muted ? "OFF" : "ON"}`;
 }
 
+// ---------------- hammer fix (prototype) ----------------
+function hasHammerables() {
+  return stage.platforms.some((p) => p.hammerable);
+}
+function nearestHammerTarget() {
+  if (!player.onGround) return null;
+  let best = null, bestD = 1e9;
+  for (const p of stage.platforms) {
+    if (!p.hammerable || p.fixed) continue;
+    const inX = player.x + player.w > p.x - 50 && player.x < p.x + p.w + 50;
+    const dy = Math.abs(player.y + player.h - p.y);
+    if (!inX || dy > 90) continue;
+    const d = Math.abs((player.x + player.w / 2) - (p.x + p.w / 2));
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+function startFix(target) { fixState = { target, t: 0, taps: 0 }; }
+function tickFix(dt) {
+  fixState.t += dt;
+  const taps = [0.25, 0.6, 0.95];
+  if (fixState.taps < taps.length && fixState.t >= taps[fixState.taps]) { sfx("tap"); fixState.taps++; }
+  if (fixState.t >= FIX_DUR) { applyHammer(fixState.target); fixState = null; }
+}
+function applyHammer(t) {
+  if (t.real) {
+    t.solid = true; t.glitchy = false; t.fixed = true;
+    GAME.corruption += 1;
+    sfx("ding");
+    log(`[INFO] ${t.id}: ${t.fixLine} — patched`, "info");
+  } else {
+    sfx("tonk");
+    log(`[INFO] ${t.id}: ${t.fixLine}`, "meta");
+  }
+}
+
 // ---------------- render ----------------
 function render() {
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
@@ -478,6 +530,7 @@ function render() {
   drawNotes();
   drawGoal();
   drawPlayer();
+  drawFix();
   ctx.restore();
   drawTriggerHint();
   setMeta(GAME.fragments, FRAGMENT_TOTAL, integrity());
@@ -601,6 +654,45 @@ function drawHazards() {
   }
 }
 
+function drawFix() {
+  // "[E] FIX" prompt over a hammerable object in range
+  if (fixPrompt && !fixState) {
+    ctx.fillStyle = "#e3c356";
+    ctx.font = "12px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("[E] FIX", fixPrompt.x + fixPrompt.w / 2, fixPrompt.y - 10);
+    ctx.textAlign = "left";
+  }
+  if (!fixState) return;
+  const p = player;
+  // hammer tapping next to the player
+  const swing = Math.abs(Math.sin(fixState.t * 12)) * 0.9;
+  const hx = p.x + (p.facing > 0 ? p.w : 0);
+  const hy = p.y + 12;
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.scale(p.facing > 0 ? 1 : -1, 1);
+  ctx.rotate(0.25 + swing);
+  ctx.fillStyle = "#8b6f3a"; ctx.fillRect(0, -2, 16, 4);   // handle
+  ctx.fillStyle = "#c2cad3"; ctx.fillRect(14, -6, 9, 12);  // head
+  ctx.restore();
+  // tiny console near the hammer, typing the fix
+  const t = fixState.target;
+  const bx = p.x - 12, by = p.y - 74, bw = 200, bh = 54;
+  ctx.fillStyle = "rgba(12,14,18,0.92)"; ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = t.real ? "#56e39f" : "#e3c356"; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+  ctx.font = "11px 'Courier New', monospace"; ctx.textAlign = "left";
+  ctx.fillStyle = "#7f8a96"; ctx.fillText(`> patch ${t.id}`, bx + 8, by + 18);
+  const full = `> ${t.fixLine}`;
+  const shown = Math.floor((fixState.t / (FIX_DUR * 0.8)) * full.length);
+  ctx.fillStyle = t.real ? "#9fe9c7" : "#e3c356";
+  ctx.fillText(full.slice(0, Math.max(0, shown)), bx + 8, by + 34);
+  if (fixState.t > FIX_DUR * 0.85) {
+    ctx.fillStyle = t.real ? "#56e39f" : "#e35664";
+    ctx.fillText(t.real ? "✓ patched" : "✗ not a bug", bx + 8, by + 48);
+  }
+}
+
 function drawNotes() {
   if (!stage.notes) return;
   ctx.fillStyle = "#5a6470";
@@ -719,6 +811,7 @@ window.addEventListener("orientationchange", fitStage);
 initInput();
 bindTouchControls();
 fitStage();
-if (new URLSearchParams(location.search).has("lab")) startLab();
+const _p = new URLSearchParams(location.search);
+if (_p.has("lab")) startLab(_p.get("lab") === "hammer" ? "hammer" : "paradox");
 else toTitle();
 requestAnimationFrame(frame);

@@ -14,7 +14,10 @@
 **▶ プレイ（GitHub Pages・PC/スマホ対応）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/**
 
 **▶ 設計実験「PARADOX」（?lab）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/?lab**
-　同じバグ1つで「直さないと取れない／直さないと進めない」を両立させる検証スライス。詳細は [`docs/REVIEW.md`](docs/REVIEW.md)。
+　同じバグ1つで「直さないと取れない／直さないと進めない」を両立させる検証スライス。
+
+**▶ 設計実験「HAMMER FIX」（?lab=hammer）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/?lab=hammer**
+　修正をメニューから世界内アクションへ。怪しい物体に近づき **E（PCはTab / スマホは⚙）でハンマーとんとん**→近くに小さなコンソールが出てコード修正→固体化。チラつく囮もあり「どれがバグ？」を体験。詳細は [`docs/REVIEW.md`](docs/REVIEW.md)。
 
 - 全体のMVP設計書: [`docs/DebugRunner_MVP_Design.md`](docs/DebugRunner_MVP_Design.md)
 
