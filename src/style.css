@@ -152,6 +152,16 @@ html, body {
 .bug-status.ignore-tag { color: var(--warn); }
 #debug-hint { margin-top: 6px; font-size: 11px; color: #4a5560; text-align: center; }
 
+/* 演出段階③ : corrupted debug panel */
+#debug-box.corrupt {
+  border-color: var(--err);
+  box-shadow: 0 0 30px rgba(227, 86, 100, 0.28);
+  animation: paneljit 0.22s steps(2) infinite;
+}
+@keyframes paneljit { 0% { transform: translate(0,0); } 50% { transform: translate(1px,-1px); } 100% { transform: translate(-1px,1px); } }
+#debug-box.corrupt #debug-title { color: var(--err); text-shadow: 1px 0 var(--accent), -1px 0 var(--err); }
+#debug-box.corrupt .bug-btn.ignore { border-color: var(--err); color: var(--err); }
+
 /* ---------- clear ---------- */
 #clear {
   position: absolute; inset: 0;

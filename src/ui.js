@@ -42,6 +42,16 @@ export function hideToast() { el("toast").classList.add("hidden"); }
 // action: 'fix' | 'ignore' for the highlighted, unresolved entry.
 export function renderDebugPanel(bugs, selIndex, action) {
   const list = el("debug-list");
+
+  // 演出段階③ : corrupt the debug console itself
+  const corrupt = GAME.panelCorrupt;
+  const titleEl = el("debug-title");
+  if (titleEl) titleEl.textContent = corrupt ? "D3BUG C0NS̶OLE" : "DEBUG CONSOLE";
+  const box = el("debug-box");
+  if (box) box.classList.toggle("corrupt", !!corrupt);
+  const FIX = corrupt ? "F1X" : "FIX";
+  const IGNORE = corrupt ? "IGN0RE" : "IGNORE";
+
   if (!bugs.length) {
     list.innerHTML = `<div class="bug-desc" style="text-align:center">no bugs detected.<br>keep testing...</div>`;
     return;
@@ -59,8 +69,8 @@ export function renderDebugPanel(bugs, selIndex, action) {
         const ignoreOn = i === selIndex && action === "ignore" ? "on" : "";
         body = `
           <div class="bug-actions">
-            <div class="bug-btn fix ${fixOn}">[ FIX ]</div>
-            <div class="bug-btn ignore ${ignoreOn}">[ IGNORE ]</div>
+            <div class="bug-btn fix ${fixOn}">[ ${FIX} ]</div>
+            <div class="bug-btn ignore ${ignoreOn}">[ ${IGNORE} ]</div>
           </div>`;
       }
       return `
@@ -71,6 +81,10 @@ export function renderDebugPanel(bugs, selIndex, action) {
         </div>`;
     })
     .join("");
+
+  if (corrupt) {
+    list.innerHTML += `<div class="bug-desc" style="color:#e35664;text-align:center">&gt; the console is reading you back</div>`;
+  }
 }
 
 export function openDebug() { el("debug").classList.remove("hidden"); }

@@ -11,7 +11,8 @@ export const GAME = {
 
   // run-wide
   corruption: 0,     // increments on every FIX — drives the incursion stages
-  incursion: 0,      // 0 none / 1 UI+log anomalies / 2 deeper (reserved for later)
+  incursion: 0,      // 0 none / 1 UI+log anomalies / 2 deeper
+  panelCorrupt: false, // 演出段階③: the debug panel itself gets corrupted
   stageIndex: 0,
   routes: [],        // per-stage decision summary, e.g. ['IGNORE', 'FIX/IGNORE']
 
@@ -30,6 +31,7 @@ export const GAME = {
 export function resetGame() {
   GAME.corruption = 0;
   GAME.incursion = 0;
+  GAME.panelCorrupt = false;
   GAME.stageIndex = 0;
   GAME.routes = [];
   GAME.won = false;

@@ -73,6 +73,8 @@ function updateIncursion() {
   if (GAME.stageIndex >= 2 || GAME.corruption >= 4) lvl = 2;
   else if (GAME.stageIndex >= 1 || GAME.corruption >= 2) lvl = 1;
   GAME.incursion = lvl;
+  // 演出段階③: the debug panel itself starts corrupting on the UI stage.
+  GAME.panelCorrupt = GAME.stageIndex >= 3 || GAME.corruption >= 6;
   setIncursionClass(lvl);
 }
 
@@ -297,8 +299,11 @@ function drawBackground() {
 function drawPlatforms() {
   for (const pl of stage.platforms) {
     if (pl.id === "end_wall") continue; // invisible boundary
+    // UI-collider platforms: only visible once solidified (or while fading out)
+    if (pl.uiCollider && !pl.solid && !pl.fading) continue;
     const a = pl.alpha ?? 1;
     if (a <= 0) continue;
+    if (pl.ui) { drawUiPlatform(pl, a); continue; }
     ctx.globalAlpha = a;
     if (pl.glitchy) {
       const j = (Math.sin(performance.now() / 60 + pl.x) * 3) | 0;
@@ -318,6 +323,25 @@ function drawPlatforms() {
     }
     ctx.globalAlpha = 1;
   }
+}
+
+// UI-shaped platform (toast / hud bar / log line) — the meta showcase.
+function drawUiPlatform(pl, a) {
+  ctx.globalAlpha = a;
+  const danger = pl.ui === "toast";
+  const j = (Math.sin(performance.now() / 70 + pl.x) * 2) | 0; // subtle glitch
+  ctx.fillStyle = danger ? "rgba(227,86,100,0.18)" : "rgba(86,227,159,0.13)";
+  ctx.fillRect(pl.x + j, pl.y, pl.w, pl.h);
+  ctx.strokeStyle = danger ? "#e35664" : "#56e39f";
+  ctx.setLineDash([5, 3]);
+  ctx.strokeRect(pl.x + 0.5, pl.y + 0.5, pl.w - 1, pl.h - 1);
+  ctx.setLineDash([]);
+  ctx.fillStyle = danger ? "#e35664" : "#9fe9c7";
+  ctx.font = "12px 'Courier New', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(pl.label, pl.x + pl.w / 2, pl.y + pl.h / 2 + 1);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.globalAlpha = 1;
 }
 
 function drawGoal() {

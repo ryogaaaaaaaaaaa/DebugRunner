@@ -246,7 +246,63 @@ function buildStage2() {
   return stage;
 }
 
-export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2];
+// ===== STAGE 3 — "The Interface" : BUG#06 UI实体化 + 演出③ =====
+// Single locked screen (world == viewport). The HUD / toast / log gain
+// collision and become the stepping stones across a pit.
+//   IGNORE — keep the UI solid and hop across it (the showcase / "use it").
+//   FIX    — UI loses collision and the platforms vanish; drop to the dull
+//            lower safety ledge and take the long way (corruption + deeper
+//            panel corruption). "fix it and the floor you stood on is gone."
+function buildStage3() {
+  const stage = {
+    name: "STAGE 3 — THE INTERFACE",
+    world: { w: 960, h: 540 }, // == VIEW -> camera is locked
+    spawn: { x: 40, y: 410 },
+    goal: { x: 880, y: 300, w: 20, h: 160 },
+    platforms: [
+      { id: "start_ground", x: 0,   y: 460, w: 200, h: 80, solid: true },
+      { id: "goal_ground",  x: 780, y: 460, w: 180, h: 80, solid: true },
+      // lower safety ledge — the FIX fallback route across the pit
+      { id: "lower", x: 180, y: 510, w: 620, h: 30, solid: true },
+      // UI-shaped platforms: intangible until the bug solidifies them
+      { id: "ui_toast", x: 230, y: 380, w: 150, h: 34, solid: false, uiCollider: true, ui: "toast", label: "! BUG DETECTED" },
+      { id: "ui_hud",   x: 410, y: 340, w: 160, h: 26, solid: false, uiCollider: true, ui: "hud",   label: "HP ▮▮▮▮▮" },
+      { id: "ui_log",   x: 590, y: 360, w: 150, h: 40, solid: false, uiCollider: true, ui: "log",   label: "[WARN] out of bounds" },
+    ],
+    enemies: [],
+    bugs: [],
+  };
+
+  const uiParts = (s) => s.platforms.filter((p) => p.uiCollider);
+
+  stage.bugs = [
+    {
+      id: "BUG#06", code: "UI_COLLIDER",
+      desc: "// HUD/console have collision now?? -mei",
+      state: "dormant", triggerX: 110,
+      activate(s) {
+        this.state = "active";
+        for (const p of uiParts(s)) { p.solid = true; p.glitchy = true; }
+        log("[WARN] UI layer leaked into world collision", "warn");
+      },
+      fix(s) {
+        this.state = "fixed";
+        for (const p of uiParts(s)) { p.solid = false; p.glitchy = false; p.fading = true; }
+        GAME.corruption += 1;
+        log("[INFO] UI colliders removed", "info");
+        log("[WARN] side effect: the platforms you stood on are gone", "warn");
+      },
+      ignore() {
+        this.state = "ignored";
+        log("[INFO] BUG#06 left unresolved — the UI is solid", "meta");
+      },
+      get resolved() { return this.state === "fixed" || this.state === "ignored"; },
+    },
+  ];
+  return stage;
+}
+
+export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 
 export function buildStage(index) {
