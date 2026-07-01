@@ -100,6 +100,21 @@ export function showClear({ title, sub, stats, buttonLabel }) {
 }
 export function hideClear() { el("clear").classList.add("hidden"); }
 
+// ---------- ending (演出段階④) ----------
+export function showEnding() {
+  el("ending-lines").innerHTML = "";
+  el("ending-restart").classList.add("hidden");
+  el("ending").classList.remove("hidden");
+}
+export function hideEnding() { el("ending").classList.add("hidden"); }
+export function pushEndingLine(text, tone = "info") {
+  const div = document.createElement("div");
+  div.className = `end-line end-${tone}`;
+  div.textContent = text;
+  el("ending-lines").appendChild(div);
+}
+export function showEndingRestart() { el("ending-restart").classList.remove("hidden"); }
+
 // ---------- incursion (演出段階② : UI / log anomalies) ----------
 const META_LINES = [
   ["[WARN] tester input is being logged", "warn"],

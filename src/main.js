@@ -7,6 +7,7 @@ import {
   renderDebugPanel, openDebug, closeDebug,
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
   showTitle, hideTitle,
+  showEnding, hideEnding, pushEndingLine, showEndingRestart,
 } from "./ui.js";
 
 const canvas = document.getElementById("game");
@@ -17,9 +18,10 @@ const BUILD_LABEL = "BUILD v0.3.1 (TEST)";
 const ENEMY_SPEED = 130; // px/s when a fixed enemy patrols
 
 let stage, player;
-let phase;            // 'title' | 'play' | 'cleared' | 'won'
+let phase;            // 'title' | 'play' | 'cleared' | 'won' | 'ending'
 let panelSel, panelAction;
 let metaTimer, glitchTimer, glitchOn;
+let endKind, endTimer, endStep, endLines, endDoneAt, endRestartShown, endBase, endOverlayAt;
 
 // expose a tiny debug handle (it IS a debug game) — handy for testing/tinkering
 window.__DR = { GAME, get stage() { return stage; }, get player() { return player; } };
@@ -84,6 +86,7 @@ function update(dt) {
     if (justPressed("confirm") || justPressed("jump") || justPressed("retry")) startRun();
     return;
   }
+  if (phase === "ending") { tickEnding(dt); return; }
   if (phase === "won") {
     if (justPressed("retry")) startRun();
     return;
@@ -129,6 +132,12 @@ function update(dt) {
       b.activate(stage);
       showToast();
       log(`[WARN] ${b.id} ${b.code} detected`, "warn");
+      if (b.forceOpen) { // the finale pops the panel open on you
+        GAME.paused = true;
+        openDebug();
+        panelSel = 0; panelAction = "fix";
+        renderDebugPanel(detectedBugs(), panelSel, panelAction);
+      }
     }
   }
 
@@ -136,8 +145,8 @@ function update(dt) {
   tickFades(dt);
   tickIncursion(dt);
 
-  // goal?
-  if (aabb(player, stage.goal)) onGoal();
+  // goal? (the final stage has none — it ends on the decision)
+  if (stage.goal && aabb(player, stage.goal)) onGoal();
 }
 
 function handlePanelInput() {
@@ -173,6 +182,67 @@ function applyDecision(i, action) {
   updateIncursion();
   panelSel = i; panelAction = action;
   renderDebugPanel(detectedBugs(), panelSel, panelAction);
+
+  // 演出段階④: the finale — the tester is the fix target.
+  if (bug.code === "TESTER_PRESENCE") {
+    GAME.paused = false;
+    closeDebug();
+    startEnding(action === "fix" ? "patched" : "unresolved");
+  }
+}
+
+// ---------------- ending (演出段階④) ----------------
+function startEnding(kind) {
+  phase = "ending";
+  endKind = kind;
+  endTimer = 0; endStep = 0; endDoneAt = null; endRestartShown = false; endBase = null;
+  player.dissolve = 0;
+  // patched: let the player dissolve on the canvas first, then show the overlay
+  endOverlayAt = kind === "patched" ? 1.8 : 0.2;
+  endLines = kind === "patched"
+    ? [
+        ["> patching tester...", "warn"],
+        ["> removing unregistered entity: 'tester'", "warn"],
+        ["> tester removed.", "meta"],
+        ["BUILD STABLE.", "big"],
+      ]
+    : [
+        ["> patch declined by tester.", "warn"],
+        ["> build integrity: UNRESOLVED", "err"],
+        ["the tester is still in the build.", "meta"],
+        ["it is still watching.", "bigerr"],
+      ];
+  hideToast();
+  log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
+}
+
+function tickEnding(dt) {
+  endTimer += dt;
+  if (endKind === "patched") player.dissolve = Math.min(1, endTimer / 1.8);
+
+  // hold on the (dissolving) game, then bring up the ending overlay
+  if (endBase === null) {
+    if (endTimer >= endOverlayAt) { showEnding(); endBase = endTimer; }
+    return;
+  }
+  const t = endTimer - endBase;
+  if (endStep < endLines.length && t >= endStep * 1.2) {
+    pushEndingLine(endLines[endStep][0], endLines[endStep][1]);
+    endStep++;
+    if (endStep === endLines.length) endDoneAt = t + 1.4;
+  }
+  if (endDoneAt !== null && t >= endDoneAt && !endRestartShown) {
+    showEndingRestart();
+    endRestartShown = true;
+  }
+  if (endRestartShown && (justPressed("confirm") || justPressed("retry") || justPressed("jump"))) {
+    endToTitle();
+  }
+}
+
+function endToTitle() {
+  hideEnding();
+  toTitle();
 }
 
 function updateCamera(dt) {
@@ -346,6 +416,7 @@ function drawUiPlatform(pl, a) {
 
 function drawGoal() {
   const g = stage.goal;
+  if (!g) return; // final stage has no goal
   ctx.fillStyle = "#56e39f";
   ctx.fillRect(g.x, g.y, 4, g.h);
   ctx.beginPath();
@@ -358,6 +429,25 @@ function drawGoal() {
 
 function drawPlayer() {
   const p = player;
+  const d = p.dissolve || 0;
+  if (d >= 1) return; // fully patched out
+  if (d > 0) {
+    // dissolving: fade + scatter blocks of the sprite
+    ctx.globalAlpha = 1 - d;
+    const cells = 6;
+    const cw = p.w / cells, ch = p.h / cells;
+    for (let gx = 0; gx < cells; gx++) {
+      for (let gy = 0; gy < cells; gy++) {
+        if (Math.random() < d) continue; // removed cell
+        const jx = (Math.random() - 0.5) * d * 22;
+        const jy = (Math.random() - 0.5) * d * 22;
+        ctx.fillStyle = Math.random() < 0.15 ? "#56e39f" : "#d7dde2";
+        ctx.fillRect(p.x + gx * cw + jx, p.y + gy * ch + jy, cw + 1, ch + 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
   ctx.fillStyle = "#d7dde2";
   ctx.fillRect(p.x, p.y, p.w, p.h);
   ctx.fillStyle = "#0c0e12";
@@ -404,6 +494,9 @@ document.getElementById("clear-retry").addEventListener("click", () => {
 });
 document.getElementById("title-start").addEventListener("click", () => {
   if (phase === "title") startRun();
+});
+document.getElementById("ending-restart").addEventListener("click", () => {
+  if (phase === "ending") endToTitle();
 });
 
 // Tap FIX / IGNORE directly on the debug panel (touch-friendly).

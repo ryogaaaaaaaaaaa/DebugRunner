@@ -302,7 +302,46 @@ function buildStage3() {
   return stage;
 }
 
-export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3];
+// ===== STAGE 4 — "Patch" : 演出④ — the tester becomes the fix target =====
+// A dead-end room. Walk in and the build detects an unregistered entity — you.
+// The debug panel force-opens with a single bug: BUG#00 TESTER_PRESENCE.
+//   FIX    -> you get patched out (canonical ending).
+//   IGNORE -> you refuse the patch (alternate ending).
+// The ending sequence itself is driven by main.js (applyDecision -> startEnding).
+function buildStage4() {
+  const stage = {
+    name: "STAGE 4 — PATCH",
+    world: { w: 960, h: 540 }, // locked screen
+    spawn: { x: 70, y: 430 },
+    goal: null,                // no goal — the finale is the decision, not a flag
+    final: true,
+    platforms: [
+      { id: "ground",   x: 0,   y: 490, w: 960, h: 50,  solid: true },
+      { id: "end_wall", x: 936, y: 0,   w: 24,  h: 540, solid: true },
+    ],
+    enemies: [],
+    bugs: [],
+  };
+  stage.bugs = [
+    {
+      id: "BUG#00", code: "TESTER_PRESENCE",
+      desc: "// unregistered entity in build: 'tester'. patch it out? -???",
+      state: "dormant", triggerX: 360,
+      forceOpen: true, // main.js pops the panel open on activation
+      activate() {
+        this.state = "active";
+        log("[ERROR] unregistered entity detected: tester", "err");
+        log("[meta] the build wants to patch you out", "meta");
+      },
+      fix() { this.state = "fixed"; },     // ending handled in applyDecision()
+      ignore() { this.state = "ignored"; },
+      get resolved() { return this.state === "fixed" || this.state === "ignored"; },
+    },
+  ];
+  return stage;
+}
+
+export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 
 export function buildStage(index) {

@@ -201,6 +201,30 @@ html, body {
 
 #stage.incursion2::after { animation-duration: 1.6s; }
 
+/* ---------- ending (演出段階④) ---------- */
+#ending {
+  position: absolute; inset: 0; z-index: 50;
+  background: #05060a;
+  display: flex; align-items: center; justify-content: center;
+}
+#ending-box { width: 80%; max-width: 640px; text-align: center; }
+#ending-lines { min-height: 200px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.end-line { font-size: 15px; letter-spacing: 1px; animation: endfade 0.5s ease-out; }
+.end-info { color: #7f8a86; }
+.end-warn { color: var(--warn); }
+.end-err  { color: var(--err); }
+.end-meta { color: var(--accent); }
+.end-big  { font-size: 30px; letter-spacing: 5px; color: var(--accent); margin-top: 6px; }
+.end-bigerr { font-size: 26px; letter-spacing: 4px; color: var(--err); margin-top: 6px; text-shadow: 1px 0 var(--accent), -1px 0 var(--err); }
+@keyframes endfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+#ending-restart {
+  margin-top: 30px;
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  padding: 12px 26px; font-family: inherit; font-size: 14px; letter-spacing: 3px; cursor: pointer;
+  animation: endfade 0.6s ease-out;
+}
+#ending-restart:hover { background: rgba(86, 227, 159, 0.12); }
+
 /* ---------- title / menu ---------- */
 #title {
   position: absolute; inset: 0; z-index: 10;
