@@ -76,6 +76,11 @@
 - **演出②③④の声化＋トーン段階制御**（`main.js: metaTone/metaBugDetectVoice/metaVoiceLine`）：`metaTone()` が comedy→cold→dread を進行で切替。各バグ検知に固有の声（重力「このままの方が楽しいよ?」／敵「それ、起こさないで。ね?」／UI「気づいちゃったね」／自己「見つけた。未登録のエンティティ。きみだ。」）。侵食中は定期メタログに加えて**確率で肉声**（Lv2は6割）。ラスト自己ハンマー時に dread ボイス。
 - 検証（自動）：全ハンマー修正パスで STAGE 2到達時 `hudTrue=true`／`decay>0`、修正3回で嘘HUDが `100%→55%` にスナップ、ランタイムエラー0。
 
+### → 次フェーズ
+
+MVPの評価（ヒット作基準の採点・市場分析・6本の設計柱・マイルストーン）は
+**[`DebugRunner_Production_Design.md`](./DebugRunner_Production_Design.md)** に正式化した。以後の設計判断はそちらが上位。
+
 ---
 
 
