@@ -836,17 +836,27 @@ document.getElementById("debug-list").addEventListener("click", (e) => {
   applyDecision(Number(entry.dataset.i), btn.classList.contains("fix") ? "fix" : "ignore");
 });
 
-// Scale the fixed 960x540 stage to fit any screen (phones included).
+// Scale the fixed 960x540 stage to fit any screen (phones + desktop).
+// min() can never overflow; the trick is to re-fit whenever the viewport
+// settles (browser chrome/URL-bar layout can shift innerHeight after load).
 function fitStage() {
-  const s = Math.min(window.innerWidth / VIEW.w, window.innerHeight / VIEW.h);
+  const el = document.documentElement;
+  const vw = el.clientWidth || window.innerWidth;
+  const vh = el.clientHeight || window.innerHeight;
+  const s = Math.min(vw / VIEW.w, vh / VIEW.h);
   document.getElementById("stage").style.transform = `scale(${s})`;
 }
 window.addEventListener("resize", fitStage);
 window.addEventListener("orientationchange", fitStage);
+window.addEventListener("load", fitStage);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", fitStage);
 
 initInput();
 bindTouchControls();
 fitStage();
+// re-fit across the next couple frames in case the chrome/URL-bar layout
+// shifted the viewport height right after load (avoids a too-large scale)
+requestAnimationFrame(() => { fitStage(); requestAnimationFrame(fitStage); });
 
 // --- PC keyboard robustness ---
 // Keep keyboard focus on the game (helps iframe/embeds and after focus loss),

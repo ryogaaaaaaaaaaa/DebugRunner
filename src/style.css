@@ -43,6 +43,9 @@ html, body {
   image-rendering: pixelated;
 }
 
+/* the stage is focused for keyboard robustness — don't draw a focus ring */
+#stage:focus, #stage:focus-visible { outline: none; }
+
 /* ---------- HUD ---------- */
 .hud {
   position: absolute;
