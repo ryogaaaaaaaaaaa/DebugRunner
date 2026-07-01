@@ -1,5 +1,6 @@
 import { GAME, WORLD } from "./state.js";
 import { sfx } from "./audio.js";
+import { shake, burst } from "./fx.js";
 
 const SPEED = 270;        // px/s horizontal
 const GRAVITY = 2100;     // px/s^2
@@ -50,8 +51,11 @@ export function updatePlayer(p, dt, platforms, keys, jumpPressed) {
     p.vy = JUMP_V;
     p.onGround = false;
     p.coyote = 0; p.buffer = 0;
+    p.squash = -0.5; // stretch up
     sfx("jump");
+    burst(p.x + p.w / 2, p.y + p.h, { n: 5, color: "#3a4552", spd: 90, life: 0.3, grav: 500 });
   }
+  if (p.squash) p.squash *= Math.max(0, 1 - dt * 10);
 
   const wasGround = p.onGround;
 
@@ -65,8 +69,15 @@ export function updatePlayer(p, dt, platforms, keys, jumpPressed) {
 
   if (p.onGround) {
     p.coyote = COYOTE;
-    if (!wasGround) sfx("land");
+    if (!wasGround) {
+      sfx("land");
+      const impact = Math.min(1, Math.abs(p.landVy || 0) / 900);
+      p.squash = 0.5 * (0.5 + impact);
+      if (impact > 0.25) shake(3 * impact, 0.06);
+      burst(p.x + p.w / 2, p.y + p.h, { n: 3 + (impact * 6) | 0, color: "#3a4552", spd: 120, life: 0.35, grav: 700 });
+    }
   }
+  p.landVy = p.vy; // remember fall speed for next-frame land impact
 
   // --- fell out of the world: caller respawns ---
   if (p.y > WORLD.h + 120) return "respawn";

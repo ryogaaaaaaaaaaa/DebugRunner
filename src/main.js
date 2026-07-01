@@ -3,6 +3,7 @@ import { initInput, justPressed, clearPressed, bindTouchControls } from "./input
 import { buildStage, buildLab, buildLabHammer, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import { ensureAudio, sfx } from "./audio.js";
+import { FX, shake, hitstop, flash, glitch, burst, updateFX, frozen, shakeOffset, drawParticles, postFX, resetFX } from "./fx.js";
 import {
   log, clearLog, setStageLabel, showToast, hideToast,
   renderDebugPanel, openDebug, closeDebug,
@@ -88,6 +89,7 @@ function applyStage(s) {
   document.body.classList.toggle("stage-ui", s.stageUi === true);
   hideToast();
   closeDebug();
+  resetFX();
   updateIncursion();
   log(`[INFO] loading ${s.name.toLowerCase()}...`, "info");
   clearPressed();
@@ -191,7 +193,8 @@ function update(dt) {
     if (aabb(player, { x: f.x, y: f.y, w: 22, h: 22 })) {
       f.got = true;
       GAME.fragments += 1;
-      sfx("collect");
+      sfx("collect"); shake(5, 0.12);
+      burst(f.x + 11, f.y + 11, { n: 14, color: ["#56e39f", "#d7ffe9"], spd: 240, life: 0.5, grav: 400, up: 40 });
       log(`[INFO] data fragment recovered (${GAME.fragments}/${FRAGMENT_TOTAL})`, "meta");
     }
   }
@@ -203,6 +206,9 @@ function update(dt) {
       showToast();
       log(`[WARN] ${b.id} ${b.code} detected`, "warn");
       sfx(b.code === "TESTER_PRESENCE" ? "stinger" : b.code === "UI_COLLIDER" ? "solidify" : "detect");
+      // spectacle: the bug "breaks" the screen when it appears
+      if (b.code === "TESTER_PRESENCE") { glitch("invert", 0.6, 1); shake(14, 0.5); flash(0.25, "#e35664", 0.5); }
+      else { glitch("tear", 0.4, 1); shake(9, 0.28); }
     }
   }
 
@@ -435,8 +441,10 @@ function advance() {
 
 // ---------------- respawn / checkpoints / feel ----------------
 function respawnPlayer() {
+  burst(player.x + player.w / 2, player.y + player.h / 2, { n: 14, color: ["#e35664", "#d7dde2"], spd: 260, life: 0.5, grav: 500 });
   resetPlayer(player, GAME.checkpoint || player.spawn);
   GAME.flash = 0.25;
+  shake(12, 0.3); hitstop(0.05); flash(0.2, "#e35664", 0.45);
 }
 
 function isStableGround(id) {
@@ -501,30 +509,42 @@ function startFix(target) { fixState = { target, t: 0, taps: 0 }; }
 function tickFix(dt) {
   fixState.t += dt;
   const taps = [0.25, 0.6, 0.95];
-  if (fixState.taps < taps.length && fixState.t >= taps[fixState.taps]) { sfx("tap"); fixState.taps++; }
+  if (fixState.taps < taps.length && fixState.t >= taps[fixState.taps]) {
+    sfx("tap");
+    shake(4, 0.08);
+    const hx = player.x + (player.facing > 0 ? player.w + 6 : -6);
+    burst(hx, player.y + 14, { n: 6, color: ["#e3c356", "#d7dde2"], spd: 200, life: 0.3, grav: 500 });
+    fixState.taps++;
+  }
   if (fixState.t >= FIX_DUR) { const t = fixState.target; fixState = null; applyHammer(t); }
 }
+function fixJuice(tx, ty) {
+  shake(11, 0.28); hitstop(0.06); flash(0.16, "#56e39f", 0.35);
+  burst(tx, ty, { n: 16, color: ["#56e39f", "#9fe9c7", "#d7dde2"], spd: 300, life: 0.5, grav: 700, up: 60 });
+}
 function applyHammer(t) {
+  const tx = t.x + t.w / 2, ty = t.y + t.h / 2;
   if (t.kind === "plat") {
     if (t.real) {
       t.ref.solid = true; t.ref.glitchy = false; t.ref.fixed = true;
-      GAME.corruption += 1; sfx("ding");
+      GAME.corruption += 1; sfx("ding"); fixJuice(tx, ty);
       log(`[INFO] ${t.ref.id}: ${t.fixLine} — patched`, "info");
     } else {
-      sfx("tonk");
+      sfx("tonk"); shake(3, 0.1);
+      burst(tx, ty, { n: 4, color: "#e3c356", spd: 120, life: 0.3 });
       log(`[INFO] ${t.ref.id}: ${t.fixLine}`, "meta");
     }
     return;
   }
   if (t.kind === "self") {
-    sfx("ding");
+    sfx("ding"); shake(16, 0.4); hitstop(0.08); flash(0.3, "#e35664", 0.5); glitch("invert", 0.5, 1);
     t.ref.fix(stage);
     startEnding("patched"); // 演出④: you patched yourself out
     return;
   }
   // kind === 'bug'
   t.ref.fix(stage);
-  sfx("ding");
+  sfx("ding"); fixJuice(tx, ty);
   hideToastIfClear();
   updateIncursion();
 }
@@ -537,8 +557,9 @@ function render() {
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
   drawBackground();
   if (!stage) return; // title screen: just the backdrop behind the overlay
+  const so = shakeOffset();
   ctx.save();
-  ctx.translate(-Math.round(GAME.camera.x), -Math.round(GAME.camera.y));
+  ctx.translate(-Math.round(GAME.camera.x - so.x), -Math.round(GAME.camera.y - so.y));
   drawPlatforms();
   drawHazards();
   drawEnemies();
@@ -546,6 +567,7 @@ function render() {
   drawNotes();
   drawGoal();
   drawPlayer();
+  drawParticles(ctx);
   drawFix();
   ctx.restore();
   drawTriggerHint();
@@ -554,6 +576,7 @@ function render() {
     ctx.fillStyle = `rgba(227,86,100,${GAME.flash * 0.55})`;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
   }
+  postFX(ctx, VIEW.w, VIEW.h); // tear / invert / flash — the game "breaking"
 }
 
 function drawFragments() {
@@ -770,11 +793,17 @@ function drawPlayer() {
     ctx.globalAlpha = 1;
     return;
   }
+  const sq = p.squash || 0;
+  const sx = 1 + sq * 0.5, sy = 1 - sq * 0.5;
+  const cx = p.x + p.w / 2, by = p.y + p.h;
+  ctx.save();
+  ctx.translate(cx, by); ctx.scale(sx, sy); ctx.translate(-cx, -by);
   ctx.fillStyle = "#d7dde2";
   ctx.fillRect(p.x, p.y, p.w, p.h);
   ctx.fillStyle = "#0c0e12";
   const ex = p.facing > 0 ? p.x + p.w - 9 : p.x + 4;
   ctx.fillRect(ex, p.y + 8, 5, 5);
+  ctx.restore();
 }
 
 function drawTriggerHint() {
@@ -805,7 +834,8 @@ function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;
-  update(dt);
+  updateFX(dt);                 // FX keep animating even during hitstop
+  update(frozen() ? 0 : dt);    // hitstop freezes the world for a few frames
   render();
   clearPressed();
   requestAnimationFrame(frame);
