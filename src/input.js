@@ -43,8 +43,12 @@ export function releaseAction(action) {
 }
 
 // Wires the on-screen control buttons. Returns true if a touch device.
+// Note: `'ontouchstart' in window` false-positives on desktop Chrome, which
+// would wrongly show the mobile controls on a PC — use maxTouchPoints + a
+// coarse-pointer media query instead so PCs stay keyboard-only.
 export function bindTouchControls() {
-  const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  const isTouch = navigator.maxTouchPoints > 0 || coarse;
   if (isTouch) document.body.classList.add("touch");
 
   const map = [

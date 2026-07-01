@@ -811,6 +811,19 @@ window.addEventListener("orientationchange", fitStage);
 initInput();
 bindTouchControls();
 fitStage();
+
+// --- PC keyboard robustness ---
+// Keep keyboard focus on the game (helps iframe/embeds and after focus loss),
+// and never let a mouse-clicked menu button trap Space/Enter.
+const stageEl = document.getElementById("stage");
+stageEl.setAttribute("tabindex", "-1");
+const focusStage = () => { try { stageEl.focus({ preventScroll: true }); } catch (e) {} };
+window.addEventListener("pointerdown", focusStage);
+document.querySelectorAll("button").forEach((btn) =>
+  btn.addEventListener("click", () => { btn.blur(); focusStage(); })
+);
+focusStage();
+
 const _p = new URLSearchParams(location.search);
 if (_p.has("lab")) startLab(_p.get("lab") === "hammer" ? "hammer" : "paradox");
 else toTitle();
