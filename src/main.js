@@ -142,26 +142,12 @@ function update(dt) {
     else { enterPause(); return; }
   }
 
-  // hammer-fix interaction (stages with hammerable objects — the prototype).
-  // Here the "fix button" (E / Tab / ⚙) hammers the nearby glitchy object
-  // instead of opening the panel.
-  if (hasHammerables()) {
-    if (fixState) { tickFix(dt); return; }
-    fixPrompt = nearestHammerTarget();
-    if (fixPrompt && (justPressed("interact") || justPressed("debug"))) { startFix(fixPrompt); return; }
-  } else if (justPressed("debug")) {
-    // debug panel toggle (normal stages)
-    GAME.paused = !GAME.paused;
-    if (GAME.paused) {
-      openDebug();
-      panelSel = 0;
-      renderDebugPanel(detectedBugs(), panelSel, panelAction);
-    } else {
-      closeDebug();
-    }
-  }
-
-  if (GAME.paused) { handlePanelInput(); return; }
+  // ---- hammer fix (unified across the whole game) ----
+  // The "fix button" (E / Tab / mobile ⚙) hammers the nearby glitching thing.
+  // Leaving a bug alone (not hammering) = using it. No debug panel.
+  if (fixState) { tickFix(dt); return; } // frozen mid-hammer
+  fixPrompt = nearestFixTarget();
+  if (fixPrompt && (justPressed("interact") || justPressed("debug"))) { startFix(fixPrompt); return; }
 
   // gameplay — frozen enemies act as solid platforms; woken ones don't block.
   updateEnemies(dt);
@@ -217,12 +203,6 @@ function update(dt) {
       showToast();
       log(`[WARN] ${b.id} ${b.code} detected`, "warn");
       sfx(b.code === "TESTER_PRESENCE" ? "stinger" : b.code === "UI_COLLIDER" ? "solidify" : "detect");
-      if (b.forceOpen) { // the finale pops the panel open on you
-        GAME.paused = true;
-        openDebug();
-        panelSel = 0; panelAction = "fix";
-        renderDebugPanel(detectedBugs(), panelSel, panelAction);
-      }
     }
   }
 
@@ -421,8 +401,9 @@ function onGoal() {
     });
     return;
   }
+  if (stage.final) { startEnding("unresolved"); return; } // reached the exit = refuse the patch
   const summary = stage.bugs
-    .map((b) => `${b.id}: <b>${b.state.toUpperCase()}</b>`)
+    .map((b) => `${b.id}: <b>${b.state === "fixed" ? "PATCHED" : "LEFT"}</b>`)
     .join("<br>");
   GAME.routes[GAME.stageIndex] = summary;
   log("[META] tester reached goal. build flagged for review.", "meta");
@@ -480,20 +461,39 @@ function updatePauseLabels() {
   if (m) m.textContent = `SOUND: ${GAME.muted ? "OFF" : "ON"}`;
 }
 
-// ---------------- hammer fix (prototype) ----------------
-function hasHammerables() {
-  return stage.platforms.some((p) => p.hammerable);
+// ---------------- hammer fix (unified) ----------------
+// A "fix target" wraps the thing you can hammer, with a rect hitbox:
+//   { kind:'plat'|'bug'|'self', ref, x,y,w,h, fixLine }
+function fixTargets() {
+  const list = [];
+  // lab hammerable platforms (real bug + decoy)
+  for (const p of stage.platforms) {
+    if (p.hammerable && !p.fixed) {
+      list.push({ kind: "plat", ref: p, x: p.x, y: p.y, w: p.w, h: p.h, fixLine: p.fixLine, real: p.real });
+    }
+  }
+  // active, un-hammered bugs — hammer the glitch marker (or yourself)
+  for (const bug of stage.bugs) {
+    if (bug.state !== "active") continue;
+    if (bug.self) {
+      list.push({ kind: "self", ref: bug, x: player.x - 8, y: player.y - 8, w: player.w + 16, h: player.h + 16, fixLine: bug.fixLine });
+    } else if (bug.marker) {
+      const m = bug.marker;
+      list.push({ kind: "bug", ref: bug, x: m.x - 26, y: m.y - 20, w: 52, h: 96, fixLine: bug.fixLine, code: bug.code });
+    }
+  }
+  return list;
 }
-function nearestHammerTarget() {
+function nearestFixTarget() {
   if (!player.onGround) return null;
   let best = null, bestD = 1e9;
-  for (const p of stage.platforms) {
-    if (!p.hammerable || p.fixed) continue;
-    const inX = player.x + player.w > p.x - 50 && player.x < p.x + p.w + 50;
-    const dy = Math.abs(player.y + player.h - p.y);
-    if (!inX || dy > 90) continue;
-    const d = Math.abs((player.x + player.w / 2) - (p.x + p.w / 2));
-    if (d < bestD) { bestD = d; best = p; }
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  for (const t of fixTargets()) {
+    const inX = player.x + player.w > t.x - 40 && player.x < t.x + t.w + 40;
+    const dy = Math.abs(pcy - (t.y + t.h / 2));
+    if (!inX || dy > 110) continue;
+    const d = Math.abs(pcx - (t.x + t.w / 2));
+    if (d < bestD) { bestD = d; best = t; }
   }
   return best;
 }
@@ -502,18 +502,34 @@ function tickFix(dt) {
   fixState.t += dt;
   const taps = [0.25, 0.6, 0.95];
   if (fixState.taps < taps.length && fixState.t >= taps[fixState.taps]) { sfx("tap"); fixState.taps++; }
-  if (fixState.t >= FIX_DUR) { applyHammer(fixState.target); fixState = null; }
+  if (fixState.t >= FIX_DUR) { const t = fixState.target; fixState = null; applyHammer(t); }
 }
 function applyHammer(t) {
-  if (t.real) {
-    t.solid = true; t.glitchy = false; t.fixed = true;
-    GAME.corruption += 1;
-    sfx("ding");
-    log(`[INFO] ${t.id}: ${t.fixLine} — patched`, "info");
-  } else {
-    sfx("tonk");
-    log(`[INFO] ${t.id}: ${t.fixLine}`, "meta");
+  if (t.kind === "plat") {
+    if (t.real) {
+      t.ref.solid = true; t.ref.glitchy = false; t.ref.fixed = true;
+      GAME.corruption += 1; sfx("ding");
+      log(`[INFO] ${t.ref.id}: ${t.fixLine} — patched`, "info");
+    } else {
+      sfx("tonk");
+      log(`[INFO] ${t.ref.id}: ${t.fixLine}`, "meta");
+    }
+    return;
   }
+  if (t.kind === "self") {
+    sfx("ding");
+    t.ref.fix(stage);
+    startEnding("patched"); // 演出④: you patched yourself out
+    return;
+  }
+  // kind === 'bug'
+  t.ref.fix(stage);
+  sfx("ding");
+  hideToastIfClear();
+  updateIncursion();
+}
+function hideToastIfClear() {
+  if (stage.bugs.every((b) => b.state !== "active")) hideToast();
 }
 
 // ---------------- render ----------------
@@ -654,42 +670,61 @@ function drawHazards() {
   }
 }
 
+function targetLabel(t) {
+  if (t.kind === "self") return "TESTER";
+  if (t.kind === "bug") return t.code || "BUG";
+  return (t.ref && t.ref.id) || "target";
+}
+function corruptStr(s) {
+  return s.replace(/[aeoi]/g, (c) => ({ a: "4", e: "3", o: "0", i: "1" }[c]));
+}
+
 function drawFix() {
-  // "[E] FIX" prompt over a hammerable object in range
+  // glitch markers so you can see WHERE to hammer (bug/self; lab platforms glow themselves)
+  for (const t of fixTargets()) {
+    if (t.kind === "plat") continue;
+    const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+    const j = (Math.sin(performance.now() / 70 + cx) * 2) | 0;
+    ctx.fillStyle = "rgba(227,86,100,0.16)"; ctx.fillRect(cx - 15 + j, cy - 15, 30, 30);
+    ctx.strokeStyle = "#e35664"; ctx.setLineDash([4, 3]);
+    ctx.strokeRect(cx - 15, cy - 15, 30, 30); ctx.setLineDash([]);
+    ctx.fillStyle = "#e35664"; ctx.font = "9px 'Courier New', monospace"; ctx.textAlign = "center";
+    ctx.fillText(targetLabel(t), cx, cy - 20); ctx.textAlign = "left";
+  }
+  // "[E] FIX" prompt on the nearest target
   if (fixPrompt && !fixState) {
-    ctx.fillStyle = "#e3c356";
-    ctx.font = "12px 'Courier New', monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("[E] FIX", fixPrompt.x + fixPrompt.w / 2, fixPrompt.y - 10);
+    ctx.fillStyle = "#e3c356"; ctx.font = "12px 'Courier New', monospace"; ctx.textAlign = "center";
+    ctx.fillText("[E] FIX", fixPrompt.x + fixPrompt.w / 2, fixPrompt.y - 6);
     ctx.textAlign = "left";
   }
   if (!fixState) return;
   const p = player;
   // hammer tapping next to the player
   const swing = Math.abs(Math.sin(fixState.t * 12)) * 0.9;
-  const hx = p.x + (p.facing > 0 ? p.w : 0);
-  const hy = p.y + 12;
   ctx.save();
-  ctx.translate(hx, hy);
+  ctx.translate(p.x + (p.facing > 0 ? p.w : 0), p.y + 12);
   ctx.scale(p.facing > 0 ? 1 : -1, 1);
   ctx.rotate(0.25 + swing);
   ctx.fillStyle = "#8b6f3a"; ctx.fillRect(0, -2, 16, 4);   // handle
   ctx.fillStyle = "#c2cad3"; ctx.fillRect(14, -6, 9, 12);  // head
   ctx.restore();
-  // tiny console near the hammer, typing the fix
+  // tiny console near the hammer, typing the fix (演出③: corrupts late-game)
   const t = fixState.target;
-  const bx = p.x - 12, by = p.y - 74, bw = 200, bh = 54;
+  const corrupt = GAME.panelCorrupt;
+  const bx = p.x - 12, by = p.y - 76, bw = 210, bh = 54;
   ctx.fillStyle = "rgba(12,14,18,0.92)"; ctx.fillRect(bx, by, bw, bh);
-  ctx.strokeStyle = t.real ? "#56e39f" : "#e3c356"; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+  ctx.strokeStyle = corrupt ? "#e35664" : "#56e39f"; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
   ctx.font = "11px 'Courier New', monospace"; ctx.textAlign = "left";
-  ctx.fillStyle = "#7f8a96"; ctx.fillText(`> patch ${t.id}`, bx + 8, by + 18);
-  const full = `> ${t.fixLine}`;
+  const id = targetLabel(t);
+  ctx.fillStyle = "#7f8a96"; ctx.fillText(corrupt ? `> p4tch ${corruptStr(id)}` : `> patch ${id}`, bx + 8, by + 18);
+  const full = `> ${corrupt ? corruptStr(t.fixLine || "") : (t.fixLine || "")}`;
   const shown = Math.floor((fixState.t / (FIX_DUR * 0.8)) * full.length);
-  ctx.fillStyle = t.real ? "#9fe9c7" : "#e3c356";
+  ctx.fillStyle = corrupt ? "#e35664" : (t.kind === "plat" && !t.real ? "#e3c356" : "#9fe9c7");
   ctx.fillText(full.slice(0, Math.max(0, shown)), bx + 8, by + 34);
   if (fixState.t > FIX_DUR * 0.85) {
-    ctx.fillStyle = t.real ? "#56e39f" : "#e35664";
-    ctx.fillText(t.real ? "✓ patched" : "✗ not a bug", bx + 8, by + 48);
+    const ok = !(t.kind === "plat" && !t.real);
+    ctx.fillStyle = ok ? (corrupt ? "#e35664" : "#56e39f") : "#e35664";
+    ctx.fillText(ok ? (corrupt ? "✓ p4tch3d" : "✓ patched") : "✗ not a bug", bx + 8, by + 48);
   }
 }
 
@@ -743,15 +778,16 @@ function drawPlayer() {
 }
 
 function drawTriggerHint() {
-  if (GAME.paused || phase !== "play") return;
-  const unresolved = detectedBugs().some((b) => !b.resolved);
-  if (!unresolved) return;
+  if (phase !== "play" || fixState || fixPrompt) return;
+  // a soft nudge only when a bug is live but you're not next to any glitch yet
+  const live = stage.bugs.some((b) => b.state === "active");
+  if (!live) return;
   const sx = player.x + player.w / 2 - GAME.camera.x;
   const sy = player.y - GAME.camera.y - 14;
   ctx.fillStyle = "#e3c356";
-  ctx.font = "12px 'Courier New', monospace";
+  ctx.font = "11px 'Courier New', monospace";
   ctx.textAlign = "center";
-  ctx.fillText("[TAB] DEBUG", sx, sy);
+  ctx.fillText("find the glitch — hammer it (E)", sx, sy);
   ctx.textAlign = "left";
 }
 

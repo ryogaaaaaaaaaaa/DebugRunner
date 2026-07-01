@@ -37,6 +37,7 @@ function buildStage0() {
       id: "BUG#01", code: "PLATFORM_COLLISION",
       desc: "// platform collider disabled? falls right through. -kj",
       state: "dormant", triggerX: 360,
+      marker: { x: 372, y: 566 }, fixLine: "collider = solid;",
       activate(s) {
         this.state = "active";
         find(s, "buggy").solid = false;
@@ -111,6 +112,7 @@ function buildStage1() {
       id: "BUG#05", code: "CAMERA_CLAMP",
       desc: "// camera clamp disabled — viewport drifting up. -mei",
       state: "dormant", triggerX: 180,
+      marker: { x: 230, y: 826 }, fixLine: "clamp_to_world = true;",
       activate() {
         this.state = "active";
         GAME.cameraUnclamped = true; // reveals the upper area / secret ledge
@@ -133,6 +135,7 @@ function buildStage1() {
       id: "BUG#03", code: "GRAVITY_SCALE",
       desc: "// gravity_scale = 0.35?? everything floats. -kj",
       state: "dormant", triggerX: 430,
+      marker: { x: 500, y: 826 }, fixLine: "gravity_scale = 1.0;",
       activate() {
         this.state = "active";
         GAME.gravityScale = 0.4; // floaty
@@ -207,6 +210,7 @@ function buildStage2() {
       id: "BUG#02", code: "DOOR_STATE",
       desc: "// gate won't open. state flag desync? -mei",
       state: "dormant", triggerX: 360,
+      marker: { x: 1460, y: 826 }, fixLine: "gate.open = true;",
       activate() {
         this.state = "active";
         log("[WARN] door 'gate_A' stuck closed (state desync)", "warn");
@@ -230,6 +234,7 @@ function buildStage2() {
       id: "BUG#04", code: "ENEMY_AI",
       desc: "// guard stuck in idle loop. harmless... for now. -kj",
       state: "dormant", triggerX: 360,
+      marker: { x: 1300, y: 586 }, fixLine: "ai.state = active;",
       activate() {
         this.state = "active";
         log("[WARN] enemy 'guard_01' AI = idle_loop (frozen)", "warn");
@@ -288,7 +293,8 @@ function buildStage3() {
     {
       id: "BUG#06", code: "UI_COLLIDER",
       desc: "// HUD/console have collision now?? -mei",
-      state: "dormant", triggerX: 110,
+      state: "dormant", triggerX: 90,
+      marker: { x: 150, y: 426 }, fixLine: "ui.collision = off;",
       activate(s) {
         this.state = "active";
         for (const p of uiParts(s)) { p.solid = true; p.glitchy = true; }
@@ -312,21 +318,19 @@ function buildStage3() {
 }
 
 // ===== STAGE 4 — "Patch" : 演出④ — the tester becomes the fix target =====
-// A dead-end room. Walk in and the build detects an unregistered entity — you.
-// The debug panel force-opens with a single bug: BUG#00 TESTER_PRESENCE.
-//   FIX    -> you get patched out (canonical ending).
-//   IGNORE -> you refuse the patch (alternate ending).
-// The ending sequence itself is driven by main.js (applyDecision -> startEnding).
+// The build detects an unregistered entity — you. Now the fix target is
+// yourself: raise the hammer at your own feet to patch (canonical ending), or
+// walk to the exit and refuse (alternate ending). Handled in main.js.
 function buildStage4() {
   const stage = {
     name: "STAGE 4 — PATCH",
-    world: { w: 960, h: 540 }, // locked screen
+    world: { w: 1200, h: 540 },
     spawn: { x: 70, y: 430 },
-    goal: null,                // no goal — the finale is the decision, not a flag
+    goal: { x: 1120, y: 330, w: 20, h: 160 }, // the exit = refuse the patch
     final: true,
     platforms: [
-      { id: "ground",   x: 0,   y: 490, w: 960, h: 50,  solid: true },
-      { id: "end_wall", x: 936, y: 0,   w: 24,  h: 540, solid: true },
+      { id: "ground",   x: 0,    y: 490, w: 1200, h: 50, solid: true },
+      { id: "end_wall", x: 1176, y: 0,   w: 24,   h: 540, solid: true },
     ],
     enemies: [],
     bugs: [],
@@ -335,16 +339,16 @@ function buildStage4() {
     {
       id: "BUG#00", code: "TESTER_PRESENCE",
       desc: "// unregistered entity in build: 'tester'. patch it out? -???",
-      state: "dormant", triggerX: 360,
-      forceOpen: true, // main.js pops the panel open on activation
+      state: "dormant", triggerX: 300,
+      self: true,                 // the fix target is the player (hammer yourself)
+      fixLine: "remove tester;",
       activate() {
         this.state = "active";
         log("[ERROR] unregistered entity detected: tester", "err");
         log("[meta] the build wants to patch you out", "meta");
       },
-      fix() { this.state = "fixed"; },     // ending handled in applyDecision()
-      ignore() { this.state = "ignored"; },
-      get resolved() { return this.state === "fixed" || this.state === "ignored"; },
+      fix() { this.state = "fixed"; },     // ending handled in main.js
+      get resolved() { return this.state === "fixed"; },
     },
   ];
   return stage;
