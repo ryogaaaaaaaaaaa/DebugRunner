@@ -261,6 +261,7 @@ function buildStage2() {
 function buildStage3() {
   const stage = {
     name: "STAGE 3 — THE INTERFACE",
+    stageUi: true,             // dim real overlays so the canvas UI reads
     world: { w: 960, h: 540 }, // == VIEW -> camera is locked
     spawn: { x: 40, y: 410 },
     goal: { x: 880, y: 300, w: 20, h: 160 },
@@ -349,6 +350,54 @@ function buildStage4() {
   return stage;
 }
 
+// ===== PROTOTYPE LAB — "Paradox" : one bug, both truths =====
+// A design experiment (not in the main flow; open with ?lab). ONE gravity bug:
+//   (A) a high ledge with a fragment reachable ONLY in low gravity  -> must NOT fix
+//   (B) a ceilinged gap crossable ONLY in normal gravity (low-g bonks the
+//       ceiling and falls; no safety floor)                          -> must fix
+// Solution = order: grab the fragment low-g, THEN fix, THEN cross.
+// The gravity bug here is REVERSIBLE (toggle FIX/REVERT) so you can never lock
+// yourself out — the drama is spatial (different states needed at different x).
+export function buildLab() {
+  const stage = {
+    name: "LAB — PARADOX",
+    lab: true,
+    world: { w: 1214, h: 720 },
+    spawn: { x: 60, y: 520 },
+    goal: { x: 1120, y: 400, w: 20, h: 160 },
+    platforms: [
+      { id: "ground", x: 0, y: 560, w: 1214, h: 160, solid: true },
+      // (A) high ledge: only a low-gravity jump reaches it  -> must NOT fix
+      { id: "frag_ledge", x: 360, y: 280, w: 120, h: 20, solid: true },
+      // (B) a wall you must HOP, with a spike ceiling above the hop: the tall
+      //     low-gravity jump skewers you; only the compact normal-g arc fits
+      //     through the slot -> must fix
+      { id: "wall", x: 700, y: 500, w: 40, h: 60, solid: true },
+      { id: "end_wall", x: 1190, y: 0, w: 24, h: 720, solid: true },
+    ],
+    hazards: [{ id: "spikes", x: 620, y: 300, w: 240, h: 30 }],
+    fragments: [{ x: 400, y: 246, got: false }],
+    notes: [
+      { x: 320, y: 252, text: "◈ low-gravity only" },
+      { x: 560, y: 470, text: "low-g jumps into the spikes — patch to hop through" },
+    ],
+    enemies: [],
+    bugs: [],
+  };
+  stage.bugs = [
+    {
+      id: "BUG#03", code: "GRAVITY_SCALE",
+      desc: "// gravity_scale = 0.35 — [←/→] FIX / REVERT, [Enter] apply",
+      state: "dormant", triggerX: 150, reversible: true,
+      activate() { this.state = "active"; GAME.gravityScale = 0.4; log("[WARN] gravity_scale = 0.40 (floaty)", "warn"); },
+      fix() { GAME.gravityScale = 1.0; this.state = "fixed"; log("[INFO] gravity_scale = 1.00 (stable)", "info"); },
+      ignore() { GAME.gravityScale = 0.4; this.state = "ignored"; log("[INFO] gravity_scale = 0.40 (floaty)", "meta"); },
+      get resolved() { return false; }, // reversible: always interactive
+    },
+  ];
+  return stage;
+}
+
 export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 
@@ -359,5 +408,6 @@ export function buildStage(index) {
   const s = STAGE_BUILDERS[index]();
   if (!s.enemies) s.enemies = [];       // STAGE 0 / 1 have none
   if (!s.fragments) s.fragments = [];   // most stages have none
+  if (!s.hazards) s.hazards = [];       // spikes etc (lab only, for now)
   return s;
 }

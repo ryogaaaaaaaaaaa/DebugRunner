@@ -1,6 +1,6 @@
 import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
 import { initInput, justPressed, clearPressed, bindTouchControls } from "./input.js";
-import { buildStage, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
+import { buildStage, buildLab, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import { ensureAudio, sfx } from "./audio.js";
 import {
@@ -44,6 +44,7 @@ function startRun() {
   ensureAudio();
   hideTitle();
   resetGame();
+  GAME.labMode = false;
   clearLog();
   hideClear();
   GAME.startTime = performance.now();
@@ -52,24 +53,43 @@ function startRun() {
   loadStage(0);
 }
 
-function loadStage(index) {
-  stage = buildStage(index);
-  GAME.stageIndex = index;
-  WORLD.w = stage.world.w;
-  WORLD.h = stage.world.h;
+// Prototype lab (?lab) — a standalone design-experiment stage.
+function startLab() {
+  ensureAudio();
+  hideTitle();
+  resetGame();
+  GAME.labMode = true;
+  clearLog();
+  hideClear();
+  hideEnding();
+  GAME.startTime = performance.now();
+  GAME.stageIndex = 1; // mild incursion flavor
+  log("[INFO] prototype: paradox slice loaded", "info");
+  applyStage(buildLab());
+}
+
+function applyStage(s) {
+  stage = s;
+  WORLD.w = s.world.w;
+  WORLD.h = s.world.h;
   resetStageModifiers();
-  player = makePlayer(stage.spawn);
+  player = makePlayer(s.spawn);
   panelSel = 0; panelAction = "fix";
   phase = "play";
   metaTimer = 0; glitchTimer = 0; glitchOn = false;
 
-  setStageLabel(stage.name);
-  document.body.classList.toggle("stage-ui", index === 3); // dim real overlays on the UI stage
+  setStageLabel(s.name);
+  document.body.classList.toggle("stage-ui", s.stageUi === true);
   hideToast();
   closeDebug();
   updateIncursion();
-  log(`[INFO] loading ${stage.name.toLowerCase()}...`, "info");
+  log(`[INFO] loading ${s.name.toLowerCase()}...`, "info");
   clearPressed();
+}
+
+function loadStage(index) {
+  GAME.stageIndex = index;
+  applyStage(buildStage(index));
 }
 
 function detectedBugs() {
@@ -100,7 +120,7 @@ function update(dt) {
   }
   if (phase === "ending") { tickEnding(dt); return; }
   if (phase === "won") {
-    if (justPressed("retry")) startRun();
+    if (justPressed("retry")) { GAME.labMode ? startLab() : startRun(); }
     return;
   }
   if (phase === "cleared") {
@@ -148,6 +168,15 @@ function update(dt) {
       sfx("hit");
       respawnPlayer();
       log("[ERROR] guard_01 caught the tester", "err");
+    }
+  }
+
+  // hazards (spikes) — touch sends you back
+  for (const h of (stage.hazards || [])) {
+    if (aabb(player, h)) {
+      sfx("hit");
+      respawnPlayer();
+      log("[ERROR] tester hit a hazard", "err");
     }
   }
 
@@ -363,6 +392,19 @@ function tickIncursion(dt) {
 }
 
 function onGoal() {
+  if (stage.lab) { // prototype: the finale is just a result card
+    phase = "won";
+    showClear({
+      title: "PROTOTYPE CLEAR",
+      sub: "paradox slice",
+      stats: `◈ <b>${GAME.fragments}/1</b> recovered &nbsp; time <b>${GAME.elapsed.toFixed(1)}s</b><br><br>` +
+        (GAME.fragments
+          ? `<span style="color:#56e39f">you took the fragment in low-g, then patched to cross.</span>`
+          : `<span style="color:#e3c356">you patched first — the fragment was out of reach.</span>`),
+      buttonLabel: "RUN AGAIN  [R]",
+    });
+    return;
+  }
   const summary = stage.bugs
     .map((b) => `${b.id}: <b>${b.state.toUpperCase()}</b>`)
     .join("<br>");
@@ -430,8 +472,10 @@ function render() {
   ctx.save();
   ctx.translate(-Math.round(GAME.camera.x), -Math.round(GAME.camera.y));
   drawPlatforms();
+  drawHazards();
   drawEnemies();
   drawFragments();
+  drawNotes();
   drawGoal();
   drawPlayer();
   ctx.restore();
@@ -540,6 +584,31 @@ function drawUiPlatform(pl, a) {
   ctx.globalAlpha = 1;
 }
 
+function drawHazards() {
+  for (const h of (stage.hazards || [])) {
+    ctx.fillStyle = "#e35664";
+    const n = Math.max(1, Math.floor(h.w / 16));
+    const step = h.w / n;
+    for (let i = 0; i < n; i++) {
+      const x = h.x + i * step;
+      ctx.beginPath();
+      ctx.moveTo(x, h.y);
+      ctx.lineTo(x + step / 2, h.y + h.h);
+      ctx.lineTo(x + step, h.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+function drawNotes() {
+  if (!stage.notes) return;
+  ctx.fillStyle = "#5a6470";
+  ctx.font = "13px 'Courier New', monospace";
+  ctx.textAlign = "left";
+  for (const n of stage.notes) ctx.fillText(n.text, n.x, n.y);
+}
+
 function drawGoal() {
   const g = stage.goal;
   if (!g) return; // final stage has no goal
@@ -616,6 +685,7 @@ function frame(now) {
 
 document.getElementById("clear-retry").addEventListener("click", () => {
   if (phase === "cleared") advance();
+  else if (GAME.labMode) startLab();
   else startRun();
 });
 document.getElementById("title-start").addEventListener("click", () => {
@@ -649,5 +719,6 @@ window.addEventListener("orientationchange", fitStage);
 initInput();
 bindTouchControls();
 fitStage();
-toTitle();
+if (new URLSearchParams(location.search).has("lab")) startLab();
+else toTitle();
 requestAnimationFrame(frame);

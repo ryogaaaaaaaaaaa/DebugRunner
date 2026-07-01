@@ -13,6 +13,9 @@
 
 **▶ プレイ（GitHub Pages・PC/スマホ対応）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/**
 
+**▶ 設計実験「PARADOX」（?lab）: https://ryogaaaaaaaaaaa.github.io/DebugRunner/?lab**
+　同じバグ1つで「直さないと取れない／直さないと進めない」を両立させる検証スライス。詳細は [`docs/REVIEW.md`](docs/REVIEW.md)。
+
 - 全体のMVP設計書: [`docs/DebugRunner_MVP_Design.md`](docs/DebugRunner_MVP_Design.md)
 
 ## 公開（GitHub Pages）
