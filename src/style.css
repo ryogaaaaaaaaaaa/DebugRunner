@@ -55,6 +55,10 @@ html, body {
 }
 #hud-stage { left: 10px; }
 #hud-build { right: 10px; color: #5a6470; }
+#hud-meta {
+  left: 50%; transform: translateX(-50%);
+  color: var(--accent); opacity: 0.85; font-size: 12px;
+}
 
 #hint {
   position: absolute;

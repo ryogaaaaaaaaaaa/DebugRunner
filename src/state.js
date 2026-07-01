@@ -10,7 +10,8 @@ export const GAME = {
   camera: { x: 0, y: 0 },
 
   // run-wide
-  corruption: 0,     // increments on every FIX — drives the incursion stages
+  corruption: 0,     // increments on every FIX — drives incursion AND the ending
+  fragments: 0,      // data fragments recovered — only reachable via bug-use routes
   incursion: 0,      // 0 none / 1 UI+log anomalies / 2 deeper
   panelCorrupt: false, // 演出段階③: the debug panel itself gets corrupted
   stageIndex: 0,
@@ -30,6 +31,7 @@ export const GAME = {
 // Reset everything for a fresh run from STAGE 0.
 export function resetGame() {
   GAME.corruption = 0;
+  GAME.fragments = 0;
   GAME.incursion = 0;
   GAME.panelCorrupt = false;
   GAME.stageIndex = 0;

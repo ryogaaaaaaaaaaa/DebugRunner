@@ -1,6 +1,6 @@
 import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
 import { initInput, justPressed, clearPressed, bindTouchControls } from "./input.js";
-import { buildStage, STAGE_COUNT } from "./stages.js";
+import { buildStage, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
 import {
   log, clearLog, setStageLabel, showToast, hideToast,
@@ -8,7 +8,10 @@ import {
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
   showTitle, hideTitle,
   showEnding, hideEnding, pushEndingLine, showEndingRestart,
+  setMeta,
 } from "./ui.js";
+
+const integrity = () => Math.max(0, 100 - GAME.corruption * 15);
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -126,6 +129,22 @@ function update(dt) {
     }
   }
 
+  // data fragments — only sit on bug-use routes, so grabbing one means you
+  // chose to leave a bug alone (the reward side of the fix-vs-use trade).
+  for (const f of stage.fragments) {
+    if (f.got) continue;
+    // logical gate: some fragments require a specific platform to still be solid
+    if (f.requires) {
+      const pl = stage.platforms.find((pp) => pp.id === f.requires);
+      if (!pl || !pl.solid) continue;
+    }
+    if (aabb(player, { x: f.x, y: f.y, w: 22, h: 22 })) {
+      f.got = true;
+      GAME.fragments += 1;
+      log(`[INFO] data fragment recovered (${GAME.fragments}/${FRAGMENT_TOTAL})`, "meta");
+    }
+  }
+
   // bug triggers (x-zone based)
   for (const b of stage.bugs) {
     if (b.state === "dormant" && player.x > b.triggerX) {
@@ -199,21 +218,44 @@ function startEnding(kind) {
   player.dissolve = 0;
   // patched: let the player dissolve on the canvas first, then show the overlay
   endOverlayAt = kind === "patched" ? 1.8 : 0.2;
-  endLines = kind === "patched"
-    ? [
-        ["> patching tester...", "warn"],
-        ["> removing unregistered entity: 'tester'", "warn"],
-        ["> tester removed.", "meta"],
-        ["BUILD STABLE.", "big"],
-      ]
-    : [
-        ["> patch declined by tester.", "warn"],
-        ["> build integrity: UNRESOLVED", "err"],
-        ["the tester is still in the build.", "meta"],
-        ["it is still watching.", "bigerr"],
-      ];
+  endLines = buildEndingLines(kind);
   hideToast();
   log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
+}
+
+// The finale reflects the WHOLE run: how much you fixed (corruption) and how
+// many fragments you kept by leaving bugs alone.
+function buildEndingLines(kind) {
+  const allFrags = GAME.fragments >= FRAGMENT_TOTAL;
+  const noFrags = GAME.fragments === 0;
+  const fixedALot = GAME.corruption >= 5;
+
+  if (kind === "patched") {
+    const lines = [
+      ["> patching tester...", "warn"],
+      ["> removing unregistered entity: 'tester'", "warn"],
+      ["> tester removed.", "meta"],
+    ];
+    if (allFrags) lines.push(["> the fragments it hoarded are gone too.", "warn"]);
+    else if (noFrags) lines.push(["> it left nothing behind.", "info"]);
+    if (fixedALot) {
+      lines.push(["you fixed everything. it was never the bug.", "meta"]);
+      lines.push(["STILL UNSTABLE.", "bigerr"]);
+    } else {
+      lines.push(["you were the only thing they couldn't debug.", "meta"]);
+      lines.push(["BUILD STABLE.", "big"]);
+    }
+    return lines;
+  }
+  // unresolved
+  const lines = [
+    ["> patch declined by tester.", "warn"],
+    ["> build integrity: UNRESOLVED", "err"],
+  ];
+  if (allFrags) lines.push(["> you took everything and refused.", "meta"]);
+  lines.push([fixedALot ? "you fixed so much. and still you stay." : "you barely fixed us. you just used us.", "meta"]);
+  lines.push(["it is still watching.", "bigerr"]);
+  return lines;
 }
 
 function tickEnding(dt) {
@@ -301,7 +343,7 @@ function onGoal() {
     showClear({
       title: "STAGE CLEAR",
       sub: stage.name,
-      stats: `${summary}<br><br>corruption: <b>${GAME.corruption}</b> &nbsp; time: <b>${GAME.elapsed.toFixed(1)}s</b>`,
+      stats: `${summary}<br><br>corruption: <b>${GAME.corruption}</b> &nbsp; ◈ <b>${GAME.fragments}/${FRAGMENT_TOTAL}</b> &nbsp; integrity: <b>${integrity()}%</b><br>time: <b>${GAME.elapsed.toFixed(1)}s</b>`,
       buttonLabel: "CONTINUE  [→]",
     });
   } else {
@@ -330,10 +372,31 @@ function render() {
   ctx.translate(-Math.round(GAME.camera.x), -Math.round(GAME.camera.y));
   drawPlatforms();
   drawEnemies();
+  drawFragments();
   drawGoal();
   drawPlayer();
   ctx.restore();
   drawTriggerHint();
+  setMeta(GAME.fragments, FRAGMENT_TOTAL, integrity());
+}
+
+function drawFragments() {
+  for (const f of stage.fragments) {
+    if (f.got) continue;
+    if (f.requires) {
+      const pl = stage.platforms.find((pp) => pp.id === f.requires);
+      if (!pl || !pl.solid) continue; // forfeited along with its platform
+    }
+    const s = 9 + 2 * Math.sin(performance.now() / 250);
+    ctx.save();
+    ctx.translate(f.x + 11, f.y + 11);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = "#56e39f";
+    ctx.fillRect(-s / 2, -s / 2, s, s);
+    ctx.strokeStyle = "#d7ffe9";
+    ctx.strokeRect(-s / 2, -s / 2, s, s);
+    ctx.restore();
+  }
 }
 
 function drawEnemies() {

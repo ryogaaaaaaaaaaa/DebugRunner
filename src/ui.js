@@ -28,6 +28,10 @@ function escapeHtml(s) {
 
 // ---------- HUD ----------
 export function setStageLabel(name) { el("hud-stage").textContent = name; }
+export function setMeta(fragments, total, integ) {
+  const node = el("hud-meta");
+  if (node) node.innerHTML = `◈ ${fragments}/${total} &nbsp; INTEGRITY ${integ}%`;
+}
 
 // ---------- title ----------
 export function showTitle() { el("title").classList.remove("hidden"); }

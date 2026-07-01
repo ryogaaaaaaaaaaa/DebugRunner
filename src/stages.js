@@ -101,6 +101,8 @@ function buildStage1() {
 
       { id: "end_wall", x: 2276, y: 0, w: 24, h: 1000, solid: true },
     ],
+    // reward for the low-gravity + camera IGNORE route (on the secret ledge)
+    fragments: [{ x: 995, y: 445, got: false }],
     bugs: [],
   };
 
@@ -189,6 +191,9 @@ function buildStage2() {
       { id: "guard_01", x: 1500, y: 546, w: 44, h: 54, x0: 1380, x1: 1620,
         dir: 1, dangerous: false, solid: true, glitchy: true },
     ],
+    // reward on the TOP route, past the guard — grab it by hopping the FROZEN
+    // guard (i.e. by NOT fixing it; a woken guard makes this deadly)
+    fragments: [{ x: 1660, y: 585, got: false }],
     bugs: [],
   };
 
@@ -270,6 +275,9 @@ function buildStage3() {
       { id: "ui_log",   x: 590, y: 360, w: 150, h: 40, solid: false, uiCollider: true, ui: "log",   label: "[WARN] out of bounds" },
     ],
     enemies: [],
+    // reward on the UI route — gated to the UI being solid, so FIXing (which
+    // removes the collision) genuinely forfeits it, not just geometrically.
+    fragments: [{ x: 475, y: 316, got: false, requires: "ui_hud" }],
     bugs: [],
   };
 
@@ -344,8 +352,12 @@ function buildStage4() {
 export const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4];
 export const STAGE_COUNT = STAGE_BUILDERS.length;
 
+// Total data fragments across the game (one on each bug-use route: STAGE 1/2/3).
+export const FRAGMENT_TOTAL = 3;
+
 export function buildStage(index) {
   const s = STAGE_BUILDERS[index]();
-  if (!s.enemies) s.enemies = []; // STAGE 0 / 1 have none
+  if (!s.enemies) s.enemies = [];       // STAGE 0 / 1 have none
+  if (!s.fragments) s.fragments = [];   // most stages have none
   return s;
 }
