@@ -26,6 +26,11 @@ export const GAME = {
   won: false,
   startTime: 0,
   elapsed: 0,
+
+  // feel / options
+  muted: false,
+  checkpoint: null,  // {x,y} last safe grounded spot in the current stage
+  flash: 0,          // red hit/respawn flash timer
 };
 
 // Reset everything for a fresh run from STAGE 0.
@@ -47,6 +52,8 @@ export function resetStageModifiers() {
   GAME.gravityScale = 1;
   GAME.cameraUnclamped = false;
   GAME.paused = false;
+  GAME.checkpoint = null;
+  GAME.flash = 0;
   GAME.camera.x = 0;
   GAME.camera.y = 0;
 }

@@ -229,6 +229,25 @@ html, body {
 }
 #ending-restart:hover { background: rgba(86, 227, 159, 0.12); }
 
+/* ---------- pause menu ---------- */
+#pause {
+  position: absolute; inset: 0; z-index: 45;
+  background: rgba(5, 6, 10, 0.82);
+  display: flex; align-items: center; justify-content: center;
+}
+#pause-box { text-align: center; display: flex; flex-direction: column; gap: 12px; width: 240px; }
+#pause-title-txt { color: var(--accent); font-size: 26px; letter-spacing: 5px; margin-bottom: 8px; }
+.pause-btn {
+  background: transparent; border: 1px solid #3a434e; color: #aeb7c1;
+  padding: 11px 0; font-family: inherit; font-size: 13px; letter-spacing: 2px; cursor: pointer;
+}
+.pause-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(86,227,159,.08); }
+#pause-hint { margin-top: 8px; color: #4a5560; font-size: 11px; }
+
+/* dim the real overlays on the UI stage so the canvas UI reads clearly */
+body.stage-ui #hint { opacity: 0; }
+body.stage-ui #log { opacity: 0.4; }
+
 /* ---------- title / menu ---------- */
 #title {
   position: absolute; inset: 0; z-index: 10;

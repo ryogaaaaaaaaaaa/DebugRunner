@@ -1,9 +1,12 @@
 import { GAME, WORLD } from "./state.js";
+import { sfx } from "./audio.js";
 
 const SPEED = 270;        // px/s horizontal
 const GRAVITY = 2100;     // px/s^2
 const JUMP_V = -790;      // initial jump velocity (peak ~150px)
 const MAX_FALL = 1200;
+const COYOTE = 0.10;      // grace after leaving a ledge
+const BUFFER = 0.12;      // grace if jump pressed just before landing
 
 export function makePlayer(spawn) {
   return {
@@ -13,17 +16,22 @@ export function makePlayer(spawn) {
     onGround: false,
     facing: 1,
     spawn: { ...spawn },
-    glitch: 0, // visual flicker timer
+    glitch: 0,
+    coyote: 0,
+    buffer: 0,
+    groundId: null, // id of the platform currently stood on (for checkpoints)
   };
 }
 
-export function resetPlayer(p) {
-  p.x = p.spawn.x; p.y = p.spawn.y;
+export function resetPlayer(p, at) {
+  const s = at || p.spawn;
+  p.x = s.x; p.y = s.y;
   p.vx = 0; p.vy = 0; p.onGround = false;
+  p.coyote = 0; p.buffer = 0;
 }
 
-// dt in seconds. `platforms` is the live array (solid flags respected).
-export function updatePlayer(p, dt, platforms, keys) {
+// dt in seconds. `platforms` is the live solids array. jumpPressed = rising edge.
+export function updatePlayer(p, dt, platforms, keys, jumpPressed) {
   // --- horizontal ---
   let dir = 0;
   if (keys.left) dir -= 1;
@@ -34,24 +42,34 @@ export function updatePlayer(p, dt, platforms, keys) {
   // --- gravity (scaled live by the gravity bug) ---
   p.vy = Math.min(p.vy + GRAVITY * GAME.gravityScale * dt, MAX_FALL);
 
-  // --- jump ---
-  if (keys.jump && p.onGround) {
+  // --- jump with coyote time + input buffer (edge-based: no auto-bhop) ---
+  if (jumpPressed) p.buffer = BUFFER;
+  else p.buffer = Math.max(0, p.buffer - dt);
+  if (p.coyote > 0) p.coyote -= dt;
+  if (p.buffer > 0 && (p.onGround || p.coyote > 0)) {
     p.vy = JUMP_V;
     p.onGround = false;
+    p.coyote = 0; p.buffer = 0;
+    sfx("jump");
   }
+
+  const wasGround = p.onGround;
 
   // --- integrate + resolve per axis (simple swept AABB) ---
   p.x += p.vx * dt;
   resolveAxis(p, platforms, "x");
   p.y += p.vy * dt;
   p.onGround = false;
+  p.groundId = null;
   resolveAxis(p, platforms, "y");
 
-  // --- fell out of the world: respawn (no death screen in the slice) ---
-  if (p.y > WORLD.h + 120) {
-    resetPlayer(p);
-    return "respawn";
+  if (p.onGround) {
+    p.coyote = COYOTE;
+    if (!wasGround) sfx("land");
   }
+
+  // --- fell out of the world: caller respawns ---
+  if (p.y > WORLD.h + 120) return "respawn";
   return null;
 }
 
@@ -69,7 +87,7 @@ function resolveAxis(p, platforms, axis) {
       else if (p.vx < 0) p.x = pl.x + pl.w;
       p.vx = 0;
     } else {
-      if (p.vy > 0) { p.y = pl.y - p.h; p.onGround = true; }
+      if (p.vy > 0) { p.y = pl.y - p.h; p.onGround = true; p.groundId = pl.id; }
       else if (p.vy < 0) { p.y = pl.y + pl.h; }
       p.vy = 0;
     }

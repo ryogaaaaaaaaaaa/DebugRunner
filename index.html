@@ -47,6 +47,18 @@
     <!-- Start hint -->
     <div id="hint">←→ move &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; TAB debug</div>
 
+    <!-- Pause menu -->
+    <div id="pause" class="hidden">
+      <div id="pause-box">
+        <div id="pause-title-txt">PAUSED</div>
+        <button class="pause-btn" id="pause-resume">RESUME</button>
+        <button class="pause-btn" id="pause-restart">RESTART STAGE</button>
+        <button class="pause-btn" id="pause-mute">SOUND: ON</button>
+        <button class="pause-btn" id="pause-title">QUIT TO TITLE</button>
+        <div id="pause-hint">[Esc] resume &nbsp;·&nbsp; [M] mute</div>
+      </div>
+    </div>
+
     <!-- Ending sequence (演出段階④) -->
     <div id="ending" class="hidden">
       <div id="ending-box">
@@ -75,6 +87,7 @@
       <button class="tc" id="tc-right" aria-label="move right">▶</button>
     </div>
     <div class="tc-pad-right">
+      <button class="tc tc-small" id="tc-pause" aria-label="pause">⏸</button>
       <button class="tc tc-small" id="tc-debug" aria-label="debug panel">⚙ DEBUG</button>
       <button class="tc tc-jump" id="tc-jump" aria-label="jump">JUMP</button>
     </div>

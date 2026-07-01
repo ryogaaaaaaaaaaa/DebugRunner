@@ -2,6 +2,7 @@ import { GAME, VIEW, WORLD, resetGame, resetStageModifiers } from "./state.js";
 import { initInput, justPressed, clearPressed, bindTouchControls } from "./input.js";
 import { buildStage, STAGE_COUNT, FRAGMENT_TOTAL } from "./stages.js";
 import { makePlayer, resetPlayer, updatePlayer } from "./player.js";
+import { ensureAudio, sfx } from "./audio.js";
 import {
   log, clearLog, setStageLabel, showToast, hideToast,
   renderDebugPanel, openDebug, closeDebug,
@@ -21,7 +22,8 @@ const BUILD_LABEL = "BUILD v0.3.1 (TEST)";
 const ENEMY_SPEED = 130; // px/s when a fixed enemy patrols
 
 let stage, player;
-let phase;            // 'title' | 'play' | 'cleared' | 'won' | 'ending'
+let phase;            // 'title' | 'play' | 'cleared' | 'won' | 'ending' | 'pause'
+let prevPausePhase;   // phase to return to when unpausing
 let panelSel, panelAction;
 let metaTimer, glitchTimer, glitchOn;
 let endKind, endTimer, endStep, endLines, endDoneAt, endRestartShown, endBase, endOverlayAt;
@@ -39,6 +41,7 @@ function toTitle() {
 
 // ---------------- run / stage flow ----------------
 function startRun() {
+  ensureAudio();
   hideTitle();
   resetGame();
   clearLog();
@@ -61,6 +64,7 @@ function loadStage(index) {
   metaTimer = 0; glitchTimer = 0; glitchOn = false;
 
   setStageLabel(stage.name);
+  document.body.classList.toggle("stage-ui", index === 3); // dim real overlays on the UI stage
   hideToast();
   closeDebug();
   updateIncursion();
@@ -85,8 +89,13 @@ function updateIncursion() {
 
 // ---------------- update ----------------
 function update(dt) {
+  if (justPressed("mute")) toggleMute(); // works in every phase
   if (phase === "title") {
     if (justPressed("confirm") || justPressed("jump") || justPressed("retry")) startRun();
+    return;
+  }
+  if (phase === "pause") {
+    if (justPressed("pause") || justPressed("confirm")) resumeGame();
     return;
   }
   if (phase === "ending") { tickEnding(dt); return; }
@@ -100,6 +109,12 @@ function update(dt) {
   }
 
   GAME.elapsed = (performance.now() - GAME.startTime) / 1000;
+
+  // pause (Esc). If the debug panel is open, Esc closes it instead.
+  if (justPressed("pause")) {
+    if (GAME.paused) { GAME.paused = false; closeDebug(); }
+    else { enterPause(); return; }
+  }
 
   // debug panel toggle
   if (justPressed("debug")) {
@@ -118,13 +133,20 @@ function update(dt) {
   // gameplay — frozen enemies act as solid platforms; woken ones don't block.
   updateEnemies(dt);
   const solids = stage.platforms.concat(stage.enemies);
-  const ev = updatePlayer(player, dt, solids, GAME.keys);
-  if (ev === "respawn") log("[INFO] tester respawned", "info");
+  const jumpPressed = justPressed("jump");
+  const ev = updatePlayer(player, dt, solids, GAME.keys, jumpPressed);
+  if (ev === "respawn") { respawnPlayer(); log("[INFO] tester respawned", "info"); }
+
+  // record a checkpoint on stable ground (not UI/enemy — those can vanish)
+  if (player.onGround && isStableGround(player.groundId)) {
+    GAME.checkpoint = { x: player.x, y: player.y };
+  }
 
   // a woken (dangerous) enemy that touches the tester sends them back
   for (const e of stage.enemies) {
     if (e.dangerous && aabb(player, e)) {
-      resetPlayer(player);
+      sfx("hit");
+      respawnPlayer();
       log("[ERROR] guard_01 caught the tester", "err");
     }
   }
@@ -141,6 +163,7 @@ function update(dt) {
     if (aabb(player, { x: f.x, y: f.y, w: 22, h: 22 })) {
       f.got = true;
       GAME.fragments += 1;
+      sfx("collect");
       log(`[INFO] data fragment recovered (${GAME.fragments}/${FRAGMENT_TOTAL})`, "meta");
     }
   }
@@ -151,6 +174,7 @@ function update(dt) {
       b.activate(stage);
       showToast();
       log(`[WARN] ${b.id} ${b.code} detected`, "warn");
+      sfx(b.code === "TESTER_PRESENCE" ? "stinger" : b.code === "UI_COLLIDER" ? "solidify" : "detect");
       if (b.forceOpen) { // the finale pops the panel open on you
         GAME.paused = true;
         openDebug();
@@ -163,6 +187,7 @@ function update(dt) {
   updateCamera(dt);
   tickFades(dt);
   tickIncursion(dt);
+  if (GAME.flash > 0) GAME.flash = Math.max(0, GAME.flash - dt);
 
   // goal? (the final stage has none — it ends on the decision)
   if (stage.goal && aabb(player, stage.goal)) onGoal();
@@ -173,14 +198,17 @@ function handlePanelInput() {
   if (!bugs.length) return;
   let changed = false;
 
-  if (justPressed("jump")) { // up/down through the list (W/Up mapped to jump)
+  if (justPressed("jump")) { // ↑ / W / Space — previous bug
+    panelSel = (panelSel - 1 + bugs.length) % bugs.length;
+    panelAction = "fix"; sfx("select"); changed = true;
+  }
+  if (justPressed("down")) { // ↓ / S — next bug
     panelSel = (panelSel + 1) % bugs.length;
-    panelAction = "fix"; // each bug starts on FIX so selection is predictable
-    changed = true;
+    panelAction = "fix"; sfx("select"); changed = true;
   }
   if (justPressed("left") || justPressed("right")) {
     panelAction = panelAction === "fix" ? "ignore" : "fix";
-    changed = true;
+    sfx("select"); changed = true;
   }
   if (justPressed("confirm")) {
     applyDecision(panelSel, panelAction);
@@ -197,6 +225,7 @@ function applyDecision(i, action) {
   if (!bug || bug.resolved) return;
   if (action === "fix") bug.fix(stage);
   else bug.ignore(stage);
+  if (bug.code !== "TESTER_PRESENCE") sfx(action === "fix" ? "fix" : "ignore");
   if (detectedBugs().every((b) => b.resolved)) hideToast();
   updateIncursion();
   panelSel = i; panelAction = action;
@@ -219,6 +248,7 @@ function startEnding(kind) {
   // patched: let the player dissolve on the canvas first, then show the overlay
   endOverlayAt = kind === "patched" ? 1.8 : 0.2;
   endLines = buildEndingLines(kind);
+  sfx(kind === "patched" ? "patch" : "stinger");
   hideToast();
   log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
 }
@@ -327,6 +357,7 @@ function tickIncursion(dt) {
   if (glitchTimer <= 0) {
     glitchOn = !glitchOn;
     glitchBuildLabel(BUILD_LABEL, glitchOn);
+    if (glitchOn) sfx("glitch");
     glitchTimer = glitchOn ? 0.18 : 2.5 + Math.random() * 2.5;
   }
 }
@@ -363,6 +394,34 @@ function advance() {
   loadStage(GAME.stageIndex + 1);
 }
 
+// ---------------- respawn / checkpoints / feel ----------------
+function respawnPlayer() {
+  resetPlayer(player, GAME.checkpoint || player.spawn);
+  GAME.flash = 0.25;
+}
+
+function isStableGround(id) {
+  if (!id) return false;
+  const pl = stage.platforms.find((p) => p.id === id);
+  return !!pl && pl.solid && !pl.uiCollider && id !== "end_wall";
+}
+
+// ---------------- pause / options ----------------
+const $ = (id) => document.getElementById(id);
+function enterPause() { phase = "pause"; $("pause").classList.remove("hidden"); updatePauseLabels(); }
+function resumeGame() { $("pause").classList.add("hidden"); phase = "play"; clearPressed(); }
+function restartStage() { $("pause").classList.add("hidden"); loadStage(GAME.stageIndex); }
+function toggleMute() {
+  GAME.muted = !GAME.muted;
+  if (!GAME.muted) { ensureAudio(); sfx("select"); }
+  log(`[INFO] audio ${GAME.muted ? "muted" : "on"}`, "info");
+  updatePauseLabels();
+}
+function updatePauseLabels() {
+  const m = $("pause-mute");
+  if (m) m.textContent = `SOUND: ${GAME.muted ? "OFF" : "ON"}`;
+}
+
 // ---------------- render ----------------
 function render() {
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
@@ -378,6 +437,10 @@ function render() {
   ctx.restore();
   drawTriggerHint();
   setMeta(GAME.fragments, FRAGMENT_TOTAL, integrity());
+  if (GAME.flash > 0) {
+    ctx.fillStyle = `rgba(227,86,100,${GAME.flash * 0.55})`;
+    ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  }
 }
 
 function drawFragments() {
@@ -561,6 +624,10 @@ document.getElementById("title-start").addEventListener("click", () => {
 document.getElementById("ending-restart").addEventListener("click", () => {
   if (phase === "ending") endToTitle();
 });
+document.getElementById("pause-resume").addEventListener("click", resumeGame);
+document.getElementById("pause-restart").addEventListener("click", restartStage);
+document.getElementById("pause-mute").addEventListener("click", toggleMute);
+document.getElementById("pause-title").addEventListener("click", () => { $("pause").classList.add("hidden"); toTitle(); });
 
 // Tap FIX / IGNORE directly on the debug panel (touch-friendly).
 document.getElementById("debug-list").addEventListener("click", (e) => {
