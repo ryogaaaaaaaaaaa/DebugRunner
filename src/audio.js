@@ -6,6 +6,10 @@ let ctx = null;
 let master = null;
 let noiseBuf = null;
 
+// shared context access for the music layer (music.js)
+export function audioCtx() { return ctx; }
+export function audioMaster() { return master; }
+
 export function ensureAudio() {
   if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
   try {

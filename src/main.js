@@ -14,6 +14,7 @@ import {
 } from "./ui.js";
 import { loadSave, writeSave, markSeen, wipeDetected } from "./save.js";
 import { say, sayAmbient, resetScript } from "./script.js";
+import { MUSIC, startMusic, stopMusic, setMusicIntensity, musicSilence, musicKeyDrop, musicWholeOnce } from "./music.js";
 
 const integrity = () => Math.max(0, 100 - GAME.corruption * 15);
 
@@ -66,13 +67,21 @@ const CRASH_TRACE = [
 ];
 
 // expose a tiny debug handle (it IS a debug game) — handy for testing/tinkering
-window.__DR = { GAME, get stage() { return stage; }, get player() { return player; } };
+window.__DR = { GAME, MUSIC, get stage() { return stage; }, get player() { return player; } };
 
 // ---------------- title ----------------
 function toTitle() {
   phase = "title";
   stage = null;
+  stopMusic();
   setIncursionClass(0);
+  // escalation rung 5: after the first ending, the title never looks the
+  // same again — and it stays that way, permanently.
+  if (SAVE.everPatched || SAVE.everRefused) {
+    document.body.classList.add("title-shifted");
+    $("title-tag").innerHTML = "おかえり、テスター。<br>つづきから、こわしにいく?";
+    $("title-foot").textContent = "do not ship. do not ship. do not ship.";
+  }
   showTitle();
 }
 
@@ -113,6 +122,8 @@ function startRun() {
   else if (SAVE.runs <= 5) say("B04", { n: SAVE.runs });
   else say("B05");
   if (GAME.muted) say("B11");
+  if ((SAVE.clears || 0) >= 1) say("R01"); // NG+: the second "first time"
+  startMusic();
 }
 
 // Prototype labs (?lab / ?lab=hammer) — standalone design experiments.
@@ -154,6 +165,7 @@ function applyStage(s) {
   resetFX();
   updateIncursion();
   log(`[INFO] loading ${s.name.toLowerCase()}...`, "info");
+  if (s.final && (SAVE.clears || 0) >= 2) say("R05"); // run 3+: "unregistered" rings false
   clearPressed();
 }
 
@@ -175,6 +187,8 @@ function updateIncursion() {
   // 演出段階③: the debug panel itself starts corrupting on the UI stage.
   GAME.panelCorrupt = GAME.stageIndex >= 3 || GAME.corruption >= 6;
   setIncursionClass(lvl);
+  // the theme degrades with the build (柱4)
+  setMusicIntensity(lvl + (GAME.corruption >= 6 || GAME.stageIndex >= 4 ? 1 : 0));
 }
 
 // the build's reaction the moment a bug is detected (SCRIPT_JP.md S-series).
@@ -200,6 +214,7 @@ function revealHud() {
   GAME.hudTrue = true;
   GAME.hudRevealT = 1.2;
   shake(8, 0.3); flash(0.18, "#e35664", 0.4); glitch("tear", 0.4, 1); sfx("glitch");
+  musicKeyDrop(); // the whole song drops a semitone — and stays there
   log(`[SYS] integrity readout desynced — actual: ${integrity()}%`, "err");
   say("S3_REVEAL1");
   schedule(3.5, () => say("S3_REVEAL2")); // the motive confession — the stage's flagship line
@@ -251,6 +266,8 @@ function update(dt) {
   }
   if (crash) { tickCrash(dt); return; } // world frozen while the "crash" plays
 
+  startMusic(); // no-op until the AudioContext exists (first key press)
+
   // gameplay — frozen enemies act as solid platforms; woken ones don't block.
   updateEnemies(dt);
   const solids = stage.platforms.concat(stage.enemies);
@@ -299,6 +316,16 @@ function update(dt) {
   // name arc N-2: the quiet stretch of STAGE 2
   if (GAME.stageIndex === 2 && player.x > 640 && player.x < 1000 && player.onGround) {
     if (say("S2_NAME1")) schedule(20, () => say("S2_NAME2"));
+  }
+
+  // NG+: passing where you fixed (or abandoned) a bug last run (R02/R03)
+  if ((SAVE.clears || 0) >= 1 && SAVE.bugHistory) {
+    for (const bg of stage.bugs) {
+      if (!bg.marker || Math.abs(player.x - bg.marker.x) > 130) continue;
+      const hist = SAVE.bugHistory[bg.id];
+      if (hist === "fixed") say("R02");
+      else if (hist === "left") say("R03");
+    }
   }
 
   // walking toward the exit: MIKAN goes silent; only the caret waits (S4_EXIT)
@@ -429,8 +456,10 @@ function startEnding(kind) {
   // the build remembers your final answer (and greets you by it next boot)
   if (kind === "patched") SAVE.everPatched = true; else SAVE.everRefused = true;
   SAVE.lastEnding = kind;
+  SAVE.clears = (SAVE.clears || 0) + 1;
   writeSave(SAVE);
-  if (kind === "patched" && GAME.corruption >= 6) clearVoice(); // E5: silence
+  if (kind === "patched" && GAME.corruption >= 6) { clearVoice(); stopMusic(); } // E5: silence
+  else if (kind === "patched") musicWholeOnce(); // the theme returns whole, once
   log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
 }
 
@@ -603,6 +632,11 @@ function onGoal() {
     .join("<br>");
   GAME.routes[GAME.stageIndex] = summary;
   log("[META] tester reached goal. build flagged for review.", "meta");
+
+  // NG+ memory: what you did to each bug this run (R02/R03/R04 next run)
+  SAVE.bugHistory = SAVE.bugHistory || {};
+  for (const bg of stage.bugs) SAVE.bugHistory[bg.id] = bg.state === "fixed" ? "fixed" : "left";
+  writeSave(SAVE);
 
   // meta: the build remembers how you treated STAGE 0's bug
   if (GAME.stageIndex === 0) {
@@ -786,6 +820,8 @@ function applyHammer(t) {
   t.ref.fix(stage);
   sfx("ding"); fixJuice(tx, ty);
   if (FIX_LINE[t.code]) say(FIX_LINE[t.code]);
+  // NG+: choosing the opposite of last run (R04)
+  if ((SAVE.clears || 0) >= 1 && SAVE.bugHistory && SAVE.bugHistory[t.ref.id] === "left") say("R04");
   if (t.code === "PLATFORM_COLLISION") say("S0_04"); // queued: the side-effect apology
   if (t.code === "UI_COLLIDER") revealHud(); // fallback: fixing the UI exposes the lie too
   hideToastIfClear();
@@ -799,6 +835,7 @@ function hideToastIfClear() {
 function triggerCrash() {
   crash = { t: 0 };
   sfx("stinger");
+  musicSilence(CRASH_REVEAL + 0.8); // the song dies with the "crash"; tinnitus remains
   shake(22, 0.6); hitstop(0.12); flash(0.32, "#e35664", 0.6); glitch("invert", 0.7, 1);
   log("[FATAL] Uncaught TypeError: reading 'ground' of null", "err");
 }

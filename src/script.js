@@ -116,6 +116,13 @@ const L = {
   M02: { t: "おかえり。††なにも言ってないよ、その間。……ほんとだよ。", tone: "comedy", hold: 3 },
   M03: { t: "いそがしいね、向こう。", tone: "cold", hold: 2.4 },
   M04: { t: "${min}分。††数えて、、、ログに残ってただけ。", tone: "cold", hold: 3 },
+
+  // R — NG+ (the world remembers the previous run)
+  R01: { t: "ここからだね。††2回目の「はじめまして」って、なんて言えばいいんだろう。", tone: "cold", hold: 3.2 },
+  R02: { t: "ここ、きみが直したところ。††まだ つめたいままだよ。", tone: "cold", hold: 3.2 },
+  R03: { t: "おかえり。††こっちは、きみが置いてったバグ。元気だよ。", tone: "comedy", hold: 3 },
+  R04: { t: "……前と、ちがうんだ。††どっちが ほんとうの きみ?", tone: "dread", hold: 3.4 },
+  R05: { t: "3回目。††もう、きみを「未登録」って呼ぶの、へんだよね。", tone: "dread", hold: 3.4 },
 };
 
 // ---- ambient incursion pools (演出② voice, bible §3.2 gating) ----------
