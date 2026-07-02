@@ -47,7 +47,10 @@ const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 function ensureGain(ctx) {
   if (!gainNode) {
     gainNode = ctx.createGain();
-    gainNode.gain.value = 0.12; // ambient — never fights the SFX
+    // NOTE: final loudness = master(0.32) x this x note gain. 0.6 here puts
+    // the melody ~10dB under the SFX — present but never fighting them.
+    // (0.12 made the whole song ~-45dBFS: inaudible. Field-reported bug.)
+    gainNode.gain.value = 0.6;
     gainNode.connect(audioMaster() || ctx.destination);
   }
 }
@@ -83,12 +86,12 @@ function tick() {
         if (Math.random() < DROP[i]) continue; // the note just doesn't come
         let midi = m;
         if (i >= 3 && Math.random() < 0.25) midi += Math.random() < 0.5 ? -12 : 12;
-        note(ctx, when, midi, d, { type: "triangle", gain: 0.15, i });
+        note(ctx, when, midi, d, { type: "triangle", gain: 0.22, i });
       }
       for (const [eb, m, d] of BASS) {
         if (eb !== b) continue;
         if (i >= 3 && Math.random() < 0.3) continue; // the bass loses its grip
-        note(ctx, when, m, d, { type: "square", gain: 0.06, i });
+        note(ctx, when, m, d, { type: "square", gain: 0.1, i });
       }
     }
     MUSIC.step++;
@@ -127,7 +130,7 @@ export function musicSilence(sec = 2) {
   o.type = "sine"; o.frequency.value = 5800;
   const t = ctx.currentTime;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.028, t + 0.08);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.08);
   g.gain.exponentialRampToValueAtTime(0.0001, t + sec);
   o.connect(g); g.connect(gainNode);
   o.start(t); o.stop(t + sec + 0.05);
