@@ -116,6 +116,12 @@ function buildStage1() {
     ],
     // reward for the low-gravity + camera IGNORE route (on the secret ledge)
     fragments: [{ x: 995, y: 445, got: false }],
+    // kj/mei fragments (SCRIPT_JP.md F-series) — up high, where only the
+    // camera bug lets you see (F04 is the prj_mikan origin note, the key)
+    notes: [
+      { x: 860, y: 466, text: "// この景色を見せたくてこの面つくった。カメラのバグは……まあ、あとで。 -mei", color: "#4d6b5c" },
+      { x: 900, y: 402, text: "// prj_mikan: 「未完」のまま終わらせないように、って願掛け。あとみかん好きだから。 -mei", color: "#4d6b5c", req: "camera" },
+    ],
     bugs: [],
   };
 
@@ -209,6 +215,10 @@ function buildStage2() {
     // reward on the TOP route, past the guard — grab it by hopping the FROZEN
     // guard (i.e. by NOT fixing it; a woken guard makes this deadly)
     fragments: [{ x: 1660, y: 585, got: false }],
+    notes: [
+      { x: 1552, y: 846, text: "// gate_Aのstate管理、おれのせい。ごめん。次のビルドで直す(直さない) -kj", color: "#4d6b5c" },
+      { x: 1960, y: 588, text: "// guard_01のAI、meiの自信作。フリーズしてるけど。笑うなよ。 -kj", color: "#4d6b5c" },
+    ],
     bugs: [],
   };
 
@@ -296,6 +306,9 @@ function buildStage3() {
     // reward on the UI route — gated to the UI being solid, so FIXing (which
     // removes the collision) genuinely forfeits it, not just geometrically.
     fragments: [{ x: 475, y: 316, got: false, requires: "ui_hud" }],
+    notes: [
+      { x: 250, y: 504, text: '// "mikan" = tangerine. mei thinks she\'s hilarious. …まあ、ちょっとおもしろい -kj', color: "#4d6b5c" },
+    ],
     bugs: [],
   };
 
@@ -345,6 +358,11 @@ function buildStage4() {
       { id: "end_wall", x: 1176, y: 0,   w: 24,   h: 540, solid: true },
     ],
     enemies: [],
+    // 2nd-visit-only traces of mei (F06/F07) — her promise, then her last commit
+    notes: [
+      { x: 110, y: 470, text: "// TODO: 後で必ず直します。必ず。 -mei", color: "#4d6b5c", req: "run2" },
+      { x: 830, y: 470, text: "commit 8f3a2c1: add tester presence check — mei", color: "#4d6b5c", req: "run2" },
+    ],
     bugs: [],
   };
   stage.bugs = [

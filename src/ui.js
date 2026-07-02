@@ -184,9 +184,16 @@ export function setIncursionClass(level) {
 // ---------- the build's voice (second-person, meta) ----------
 // A caption that types itself in and speaks TO the tester. Tone shifts the
 // look from warm/comedic to cold to dread. Queued so lines don't clobber.
+// "††" inside a line = a 0.4s hesitation (script notation, see SCRIPT_JP.md).
+// The caret ▮ is MIKAN's only "face" (CHARACTER_BIBLE §4): blink patterns
+// carry the emotion — steady, slow, or arrhythmic.
 let voiceQ = [];
 let voiceCur = null;
+let caretEl = null;
+let caretT = 0, caretOn = true, caretDreadPeriod = 0.3;
 const GARBLE = "▓▒░#@!?".split("");
+const CPS = 32;         // typing speed
+const PAUSE = 0.4;      // †† hesitation
 
 export function speak(text, tone = "cold", opts = {}) {
   voiceQ.push({ text, tone, hold: opts.hold ?? 2.4 });
@@ -196,29 +203,54 @@ export function clearVoice() {
   const n = el("voice");
   if (n) { n.className = ""; n.textContent = ""; }
 }
+
+function voiceDur(v) {
+  let d = 0;
+  v.parts.forEach((s, i) => { d += s.length / CPS; if (i > 0) d += PAUSE; });
+  return d;
+}
+
 export function tickVoice(dt) {
   const n = el("voice");
   if (!n) return;
   if (!voiceCur) {
     if (!voiceQ.length) return;
     voiceCur = voiceQ.shift();
-    voiceCur.t = 0; voiceCur.shown = -1;
+    voiceCur.t = 0;
+    voiceCur.parts = voiceCur.text.split("††");
     n.className = "show voice-" + voiceCur.tone;
   }
   const v = voiceCur;
   v.t += dt;
-  const cps = 32; // typing speed
-  const target = Math.min(v.text.length, Math.floor(v.t * cps));
-  if (target !== v.shown) {
-    v.shown = target;
-    let s = v.text.slice(0, target);
-    // dread garbles the last character as it types (unstable voice)
-    if (v.tone === "dread" && target > 0 && target < v.text.length && Math.random() < 0.5) {
-      s = s.slice(0, -1) + GARBLE[(Math.random() * GARBLE.length) | 0];
-    }
-    n.textContent = s;
+
+  // walk the segments: type CPS chars/sec, pausing PAUSE at each ††
+  let t = v.t, out = "", done = true;
+  for (let i = 0; i < v.parts.length; i++) {
+    if (i > 0) { if (t < PAUSE) { done = false; break; } t -= PAUSE; }
+    const seg = v.parts[i];
+    const chars = Math.floor(t * CPS);
+    if (chars < seg.length) { out += seg.slice(0, Math.max(0, chars)); done = false; break; }
+    out += seg; t -= seg.length / CPS;
   }
-  if (v.shown >= v.text.length && v.t > v.text.length / cps + v.hold) {
+  // dread garbles the trailing character while typing (unstable voice)
+  if (!done && v.tone === "dread" && out.length && Math.random() < 0.5) {
+    out = out.slice(0, -1) + GARBLE[(Math.random() * GARBLE.length) | 0];
+  }
+  n.textContent = out;
+
+  // caret ▮ — blink pattern per tone (comedy 530ms / cold slow / dread arrhythmic)
+  if (!caretEl) { caretEl = document.createElement("span"); caretEl.id = "voice-caret"; caretEl.textContent = "▮"; }
+  if (caretEl.parentNode !== n) n.appendChild(caretEl);
+  caretT += dt;
+  const period = v.tone === "cold" ? 0.9 : v.tone === "dread" ? caretDreadPeriod : 0.53;
+  if (caretT >= period) {
+    caretT = 0; caretOn = !caretOn;
+    if (v.tone === "dread") caretDreadPeriod = 0.1 + Math.random() * 0.5;
+  }
+  caretEl.style.visibility = caretOn ? "visible" : "hidden";
+  caretEl.classList.toggle("caret-bounce", done && v.tone === "comedy");
+
+  if (done && v.t > voiceDur(v) + v.hold) {
     voiceCur = null;
     if (!voiceQ.length) n.className = "";
   }

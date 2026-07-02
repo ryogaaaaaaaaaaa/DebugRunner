@@ -10,9 +10,10 @@ import {
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
   showTitle, hideTitle,
   showEnding, hideEnding, pushEndingLine, showEndingRestart,
-  setMeta, speak, tickVoice, clearVoice,
+  setMeta, tickVoice, clearVoice,
 } from "./ui.js";
-import { loadSave, writeSave } from "./save.js";
+import { loadSave, writeSave, markSeen, wipeDetected } from "./save.js";
+import { say, sayAmbient, resetScript } from "./script.js";
 
 const integrity = () => Math.max(0, 100 - GAME.corruption * 15);
 
@@ -35,6 +36,21 @@ const FIX_DUR = 1.35;
 
 // --- meta: the build remembers the tester across runs ---
 let SAVE = loadSave();
+
+// --- reaction-matrix trigger state (SCRIPT_JP.md I/D/DC/M series) ---
+let idleT = 0, titleIdleT = 0, pauseIdleT = 0;
+let deaths = 0, spotDeaths = {}, consecFalls = 0, guardCatches = 0;
+let lowGJumps = 0, maxX = 0, uiStood = false, crashDoneAt = null;
+let pauseCount = 0, pauseStartAt = 0;
+let worldCaret = false;
+let sched = []; // [{t, fn}] — scripted beats (name arc, reveal sequence, S4 waits)
+function schedule(t, fn) { sched.push({ t, fn }); }
+function tickSched(dt) {
+  for (let i = sched.length - 1; i >= 0; i--) {
+    sched[i].t -= dt;
+    if (sched[i].t <= 0) { const f = sched[i].fn; sched.splice(i, 1); f(); }
+  }
+}
 
 // --- meta: the fake crash you can stand on (STAGE 0) ---
 let crash = null;         // { t } while the "crash" plays out, then null once done
@@ -72,19 +88,31 @@ function startRun() {
   log("[INFO] build v0.3.1 (TEST) loaded", "info");
   log("[INFO] tester session started", "info");
 
-  // the build remembers you — bump the run count and greet accordingly
+  // the build remembers you — run count, cadence, last ending, wipes (B series)
+  resetScript();
+  deaths = 0; spotDeaths = {}; consecFalls = 0; guardCatches = 0;
+  lowGJumps = 0; pauseCount = 0;
+  const wiped = wipeDetected(SAVE);
   SAVE.runs = (SAVE.runs || 0) + 1;
-  writeSave(SAVE);
+  const now = Date.now();
+  const days = SAVE.lastSeen ? Math.floor((now - SAVE.lastSeen) / 86400000) : 0;
+  const today = new Date().toDateString();
+  SAVE.dayRuns = SAVE.lastDay === today ? (SAVE.dayRuns || 0) + 1 : 1;
+  SAVE.lastDay = today; SAVE.lastSeen = now;
+  writeSave(SAVE); markSeen();
   loadStage(0);
-  if (SAVE.runs <= 1) {
-    speak("……テスター、来たね。このビルド、まだ不安定なんだ。よろしく。", "comedy", { hold: 3 });
-  } else if (SAVE.lastChoice === "use") {
-    speak("おかえり、テスター。前回は……直さなかったね。", "cold", { hold: 3 });
-  } else if (SAVE.lastChoice === "fix") {
-    speak("また来たんだ。前回はちゃんと全部直してくれたのに。", "comedy", { hold: 3 });
-  } else {
-    speak(`おかえり、テスター。${SAVE.runs}回目だね。`, "cold", { hold: 3 });
-  }
+
+  if (wiped) say("B08");
+  else if (SAVE.lastEnding === "patched") { say("B06"); delete SAVE.lastEnding; writeSave(SAVE); }
+  else if (SAVE.lastEnding === "unresolved") { say("B07"); delete SAVE.lastEnding; writeSave(SAVE); }
+  else if (SAVE.runs <= 1) say("B01");
+  else if (days >= 7) say("B09", { days });
+  else if (SAVE.dayRuns >= 3) say("B10");
+  else if (SAVE.runs === 2 && SAVE.lastChoice === "use") say("B03");
+  else if (SAVE.runs === 2 && SAVE.lastChoice === "fix") say("B02");
+  else if (SAVE.runs <= 5) say("B04", { n: SAVE.runs });
+  else say("B05");
+  if (GAME.muted) say("B11");
 }
 
 // Prototype labs (?lab / ?lab=hammer) — standalone design experiments.
@@ -117,6 +145,8 @@ function applyStage(s) {
 
   crash = null;
   clearVoice();
+  idleT = 0; uiStood = false; crashDoneAt = null; worldCaret = false;
+  sched = []; maxX = s.spawn.x;
   setStageLabel(s.name);
   document.body.classList.toggle("stage-ui", s.stageUi === true);
   hideToast();
@@ -145,73 +175,48 @@ function updateIncursion() {
   // 演出段階③: the debug panel itself starts corrupting on the UI stage.
   GAME.panelCorrupt = GAME.stageIndex >= 3 || GAME.corruption >= 6;
   setIncursionClass(lvl);
-  // the faked INTEGRITY readout can't hold up once the build is deeply unstable
-  if (lvl >= 2) revealHud();
 }
 
-// tone that the build speaks in — warms up comedic, cools, then dreads
-function metaTone() {
-  if (GAME.incursion >= 2 || GAME.corruption >= 6) return "dread";
-  if (GAME.incursion >= 1 || GAME.stageIndex >= 1) return "cold";
-  return "comedy";
-}
-
-// the build's reaction the moment a bug is detected (per bug, tone-scaled)
+// the build's reaction the moment a bug is detected (SCRIPT_JP.md S-series).
+// NOTE: the HUD-lie reveal is NO LONGER auto-fired here or by incursion level;
+// it is a scripted STAGE 3 beat (escalation rung 4, CHARACTER_BIBLE §7).
+const DETECT_LINE = {
+  PLATFORM_COLLISION: "S0_01", GRAVITY_SCALE: "S1_GRAV", CAMERA_CLAMP: "S1_CAM",
+  DOOR_STATE: "S2_DOOR", ENEMY_AI: "S2_AI", UI_COLLIDER: "S3_UI", TESTER_PRESENCE: "S4_DETECT",
+};
 function metaBugDetectVoice(b) {
-  const tone = metaTone();
-  switch (b.code) {
-    case "PLATFORM_COLLISION": speak("お、バグだ。直す？ それとも……使う?", "comedy", { hold: 3.2 }); break;
-    case "GRAVITY_SCALE": speak("ふわふわするね。……このままの方が、楽しいよ?", tone, { hold: 3 }); break;
-    case "CAMERA_CLAMP": speak("見えちゃった。……見せたく なかったのに。", tone, { hold: 3 }); break;
-    case "DOOR_STATE": speak("その扉、開けない方が いいと思うな。", tone, { hold: 3 }); break;
-    case "ENEMY_AI": speak("それ、起こさないで。……ね?", tone, { hold: 3 }); break;
-    case "UI_COLLIDER": speak("UIが、さわれる。……気づいちゃったね。", tone, { hold: 3 }); revealHud(); break;
-    case "TESTER_PRESENCE": speak("見つけた。……未登録の エンティティ。きみだ。", "dread", { hold: 3.5 }); break;
+  const id = DETECT_LINE[b.code];
+  if (id) say(id);
+  if (b.code === "TESTER_PRESENCE") { // pre-choice murmurs while you stand there
+    schedule(10, () => say("S4_WAIT1"));
+    schedule(30, () => say("S4_WAIT2"));
   }
 }
 
-// expose the true integrity: the readout was a lie the whole time (演出③)
+// expose the true integrity: the readout was a lie the whole time (演出③).
+// Scripted trigger: first time the tester STANDS on a solid UI platform.
 function revealHud() {
   if (GAME.hudTrue) return;
   GAME.hudTrue = true;
   GAME.hudRevealT = 1.2;
   shake(8, 0.3); flash(0.18, "#e35664", 0.4); glitch("tear", 0.4, 1); sfx("glitch");
   log(`[SYS] integrity readout desynced — actual: ${integrity()}%`, "err");
-  speak("……その数字、ずっと 嘘だったんだ。ごめんね。", metaTone(), { hold: 3.2 });
-}
-
-// occasional spoken meta line (演出② voice-ified; deepens with incursion)
-const META_VOICE = {
-  cold: [
-    "見てるよ。ずっと。",
-    "その入力、記録してる。",
-    "直さないんだね。……別に、いいけど。",
-    "ここ、誰が読んでるんだろうね。……きみ?",
-  ],
-  dread: [
-    "きみ、ほんとうに テスター?",
-    "manifestに きみの名前が ない。",
-    "直さないで。……それ、ぼくなんだ。",
-    "もう、戻れないよ。",
-    "見ないで。ぼくを、見ないで。",
-  ],
-};
-let metaVoiceIdx = 0;
-function metaVoiceLine() {
-  const dread = metaTone() === "dread";
-  const pool = dread ? META_VOICE.dread : META_VOICE.cold;
-  speak(pool[metaVoiceIdx % pool.length], dread ? "dread" : "cold", { hold: 2.8 });
-  metaVoiceIdx++;
+  say("S3_REVEAL1");
+  schedule(3.5, () => say("S3_REVEAL2")); // the motive confession — the stage's flagship line
 }
 
 // ---------------- update ----------------
 function update(dt) {
   if (justPressed("mute")) toggleMute(); // works in every phase
   if (phase === "title") {
-    if (justPressed("confirm") || justPressed("jump") || justPressed("retry")) startRun();
+    titleIdleT += dt;
+    if (titleIdleT >= 120) say("I05");
+    if (justPressed("confirm") || justPressed("jump") || justPressed("retry")) { titleIdleT = 0; startRun(); }
     return;
   }
   if (phase === "pause") {
+    pauseIdleT += dt;
+    if (pauseIdleT >= 180) say("I06");
     if (justPressed("pause") || justPressed("confirm")) resumeGame();
     return;
   }
@@ -251,18 +256,59 @@ function update(dt) {
   const solids = stage.platforms.concat(stage.enemies);
   const jumpPressed = justPressed("jump");
   const ev = updatePlayer(player, dt, solids, GAME.keys, jumpPressed);
-  if (ev === "respawn") { respawnPlayer(); log("[INFO] tester respawned", "info"); }
+  if (ev === "respawn") { respawnPlayer("fall"); log("[INFO] tester respawned", "info"); }
 
   // record a checkpoint on stable ground (not UI/enemy — those can vanish)
   if (player.onGround && isStableGround(player.groundId)) {
     GAME.checkpoint = { x: player.x, y: player.y };
   }
 
+  // ---- scripted beats + reaction matrix (SCRIPT_JP.md) ----
+  tickSched(dt);
+  const activeInput = GAME.keys.left || GAME.keys.right || GAME.keys.jump || GAME.keys.down;
+  idleT = activeInput ? 0 : idleT + dt;
+  if (crashDoneAt !== null && GAME.stageIndex === 0 && idleT >= 30) say("S0_CRASH4");
+  if (idleT >= 60) say("I01");
+  if (idleT >= 180) say("I02");
+  if (idleT >= 600) say("I03");
+
+  // the low-gravity joyride (3rd big jump while floaty)
+  if (jumpPressed && GAME.stageIndex === 1 && GAME.gravityScale < 1) {
+    if (++lowGJumps === 3) say("S1_GRAV_U");
+  }
+
+  // ground-based beats: mei's ledge / walking on the crash / standing on UI
+  if (player.onGround && typeof player.groundId === "string") {
+    const gid = player.groundId;
+    if (gid === "secret") say("S1_SECRET");
+    if (gid.startsWith("trace")) say("S0_CRASH3");
+    if (!uiStood) {
+      const pl = stage.platforms.find((p) => p.id === gid);
+      if (pl && pl.uiCollider) {
+        uiStood = true;
+        say("S3_WALK1");
+        schedule(4, revealHud); // escalation rung 4: the HUD lie is exposed HERE
+      }
+    }
+  }
+
+  // backtracking all the way home after real progress
+  maxX = Math.max(maxX, player.x);
+  if (maxX - stage.spawn.x > 600 && player.x <= stage.spawn.x + 60 && GAME.elapsed > 60) say("DC05");
+
+  // name arc N-2: the quiet stretch of STAGE 2
+  if (GAME.stageIndex === 2 && player.x > 640 && player.x < 1000 && player.onGround) {
+    if (say("S2_NAME1")) schedule(20, () => say("S2_NAME2"));
+  }
+
+  // walking toward the exit: MIKAN goes silent; only the caret waits (S4_EXIT)
+  if (stage.final && player.x > 880 && !worldCaret) { worldCaret = true; clearVoice(); }
+
   // a woken (dangerous) enemy that touches the tester sends them back
   for (const e of stage.enemies) {
     if (e.dangerous && aabb(player, e)) {
       sfx("hit");
-      respawnPlayer();
+      respawnPlayer("guard");
       log("[ERROR] guard_01 caught the tester", "err");
     }
   }
@@ -271,7 +317,7 @@ function update(dt) {
   for (const h of (stage.hazards || [])) {
     if (aabb(player, h)) {
       sfx("hit");
-      respawnPlayer();
+      respawnPlayer("hazard");
       log("[ERROR] tester hit a hazard", "err");
     }
   }
@@ -291,6 +337,9 @@ function update(dt) {
       sfx("collect"); shake(5, 0.12);
       burst(f.x + 11, f.y + 11, { n: 14, color: ["#56e39f", "#d7ffe9"], spd: 240, life: 0.5, grav: 400, up: 40 });
       log(`[INFO] data fragment recovered (${GAME.fragments}/${FRAGMENT_TOTAL})`, "meta");
+      if (GAME.fragments === 1) say("S1_FRAG");
+      else if (GAME.stageIndex === 2) say("S2_FRAG");
+      else if (GAME.stageIndex === 3) say("S3_FRAG");
     }
   }
 
@@ -377,9 +426,11 @@ function startEnding(kind) {
   endLines = buildEndingLines(kind);
   sfx(kind === "patched" ? "patch" : "stinger");
   hideToast();
-  // the build remembers your final answer
+  // the build remembers your final answer (and greets you by it next boot)
   if (kind === "patched") SAVE.everPatched = true; else SAVE.everRefused = true;
+  SAVE.lastEnding = kind;
   writeSave(SAVE);
+  if (kind === "patched" && GAME.corruption >= 6) clearVoice(); // E5: silence
   log(kind === "patched" ? "[meta] tester patched. build stable." : "[meta] tester refused. build unresolved.", "meta");
 }
 
@@ -389,6 +440,29 @@ function buildEndingLines(kind) {
   const allFrags = GAME.fragments >= FRAGMENT_TOTAL;
   const noFrags = GAME.fragments === 0;
   const fixedALot = GAME.corruption >= 5;
+  const fixedAll = GAME.corruption >= 6;
+
+  // E5 CLEAN BUILD — every bug fixed, then yourself. No voice: the comments
+  // that taught MIKAN to speak are gone. Only logs, and the deleted lines.
+  if (kind === "patched" && fixedAll) {
+    return [
+      ["> [INFO] all issues resolved", "info"],
+      ["> [INFO] build stable", "info"],
+      ["> [INFO] shipping...", "info"],
+      ["- // ここ直すの明日のおれに任せた -kj", "err"],
+      ["- // TODO: 後で必ず直します。必ず。 -mei", "err"],
+      ["CLEAN BUILD.", "big"],
+    ];
+  }
+  // E4 SYMBIOSIS — fixed nothing, took everything, refused the patch.
+  if (kind === "unresolved" && GAME.corruption === 0 && allFrags) {
+    return [
+      ["> patch declined by tester.", "warn"],
+      ["なにも直さないで、ぜんぶ拾って、ここまで来た。", "meta"],
+      ["きみ、テスターじゃないでしょ。……共犯って言うんだよ、そういうの。", "meta"],
+      ["BUILD: WONTFIX", "bigerr"],
+    ];
+  }
 
   if (kind === "patched") {
     const lines = [
@@ -399,21 +473,24 @@ function buildEndingLines(kind) {
     if (allFrags) lines.push(["> the fragments it hoarded are gone too.", "warn"]);
     else if (noFrags) lines.push(["> it left nothing behind.", "info"]);
     if (fixedALot) {
+      lines.push(["全部直して、きみも直した。……じゃあ、この不安定は、だれ?", "meta"]);
       lines.push(["you fixed everything. it was never the bug.", "meta"]);
       lines.push(["STILL UNSTABLE.", "bigerr"]);
     } else {
+      lines.push(["はじめて、しずかだ。……きみの音が、まだ聞こえる気がする。", "meta"]);
       lines.push(["you were the only thing they couldn't debug.", "meta"]);
       lines.push(["BUILD STABLE.", "big"]);
     }
     return lines;
   }
-  // unresolved
+  // unresolved (E3)
   const lines = [
     ["> patch declined by tester.", "warn"],
     ["> build integrity: UNRESOLVED", "err"],
   ];
   if (allFrags) lines.push(["> you took everything and refused.", "meta"]);
   lines.push([fixedALot ? "you fixed so much. and still you stay." : "you barely fixed us. you just used us.", "meta"]);
+  lines.push(["まだ見てる。……ずっと見てるの、ぼくの仕事だから。", "meta"]);
   lines.push(["it is still watching.", "bigerr"]);
   return lines;
 }
@@ -490,7 +567,7 @@ function tickIncursion(dt) {
   metaTimer -= dt;
   if (metaTimer <= 0) {
     emitMetaLine();
-    if (Math.random() < (GAME.incursion >= 2 ? 0.6 : 0.3)) metaVoiceLine();
+    if (Math.random() < (GAME.incursion >= 2 ? 0.6 : 0.3)) sayAmbient();
     metaTimer = 6 + Math.random() * 5;
   }
   // brief HUD build-label glitch
@@ -532,9 +609,10 @@ function onGoal() {
     const fixed = stage.bugs[0] && stage.bugs[0].state === "fixed";
     SAVE.lastChoice = fixed ? "fix" : "use";
     writeSave(SAVE);
-    if (fixed) speak("直したね。……えらい。全部そうしてくれる?", "comedy", { hold: 3 });
-    else speak("直さないで進んだね。……覚えておくよ。", "cold", { hold: 3 });
+    say(fixed ? "S0_GOAL_F" : "S0_03");
   }
+  // a clean run so far deserves suspicion (D08)
+  if (GAME.stageIndex === 3 && deaths === 0) say("D08");
 
   if (GAME.stageIndex < STAGE_COUNT - 1) {
     phase = "cleared";
@@ -562,7 +640,24 @@ function advance() {
 }
 
 // ---------------- respawn / checkpoints / feel ----------------
-function respawnPlayer() {
+function respawnPlayer(cause = "fall") {
+  // death bookkeeping feeds the D-series reaction lines
+  deaths += 1;
+  const key = `${GAME.stageIndex}:${Math.round(player.x / 120)}`;
+  spotDeaths[key] = (spotDeaths[key] || 0) + 1;
+  consecFalls = cause === "fall" ? consecFalls + 1 : 0;
+  if (cause === "guard") {
+    guardCatches += 1;
+    if (guardCatches === 1) say("S2_GUARD_HIT");
+    if (guardCatches === 3) say("D06");
+  }
+  if (deaths === 1) say("D01");
+  if (spotDeaths[key] === 3) say("D02");
+  if (spotDeaths[key] === 5) say("D03");
+  if (spotDeaths[key] === 10) say("D04");
+  if (consecFalls === 3) say("D05");
+  if (deaths === 20) say("D07");
+
   burst(player.x + player.w / 2, player.y + player.h / 2, { n: 14, color: ["#e35664", "#d7dde2"], spd: 260, life: 0.5, grav: 500 });
   resetPlayer(player, GAME.checkpoint || player.spawn);
   GAME.flash = 0.25;
@@ -577,13 +672,23 @@ function isStableGround(id) {
 
 // ---------------- pause / options ----------------
 const $ = (id) => document.getElementById(id);
-function enterPause() { phase = "pause"; $("pause").classList.remove("hidden"); updatePauseLabels(); }
-function resumeGame() { $("pause").classList.add("hidden"); phase = "play"; clearPressed(); }
+function enterPause() {
+  phase = "pause"; pauseIdleT = 0;
+  pauseCount += 1; pauseStartAt = performance.now();
+  if (pauseCount >= 5 && GAME.elapsed < 180) say("M03");
+  $("pause").classList.remove("hidden"); updatePauseLabels();
+}
+function resumeGame() {
+  const mins = Math.floor((performance.now() - pauseStartAt) / 60000);
+  if (mins >= 2) say("M04", { min: mins });
+  $("pause").classList.add("hidden"); phase = "play"; clearPressed();
+}
 function restartStage() { $("pause").classList.add("hidden"); loadStage(GAME.stageIndex); }
 function toggleMute() {
   GAME.muted = !GAME.muted;
   if (!GAME.muted) { ensureAudio(); sfx("select"); }
   log(`[INFO] audio ${GAME.muted ? "muted" : "on"}`, "info");
+  if (phase === "play") say(GAME.muted ? "M01" : "M02");
   updatePauseLabels();
 }
 function updatePauseLabels() {
@@ -644,6 +749,11 @@ function fixJuice(tx, ty) {
   shake(11, 0.28); hitstop(0.06); flash(0.16, "#56e39f", 0.35);
   burst(tx, ty, { n: 16, color: ["#56e39f", "#9fe9c7", "#d7dde2"], spd: 300, life: 0.5, grav: 700, up: 60 });
 }
+// per-bug fix reactions (SCRIPT_JP.md *_F lines)
+const FIX_LINE = {
+  PLATFORM_COLLISION: "S0_02", GRAVITY_SCALE: "S1_GRAV_F", CAMERA_CLAMP: "S1_CAM_F",
+  DOOR_STATE: "S2_DOOR_F", ENEMY_AI: "S2_AI_F", UI_COLLIDER: "S3_FIX",
+};
 function applyHammer(t) {
   const tx = t.x + t.w / 2, ty = t.y + t.h / 2;
   if (t.kind === "plat") {
@@ -655,12 +765,19 @@ function applyHammer(t) {
       sfx("tonk"); shake(3, 0.1);
       burst(tx, ty, { n: 4, color: "#e3c356", spd: 120, life: 0.3 });
       log(`[INFO] ${t.ref.id}: ${t.fixLine}`, "meta");
+      // decoy persistence gets rewarded (DC series)
+      t.ref.tonks = (t.ref.tonks || 0) + 1;
+      if (t.ref.tonks === 1) say("DC01");
+      if (t.ref.tonks === 3) say("DC02");
+      if (t.ref.tonks === 10) { say("DC03"); t.ref.fixLine = "// property of tester"; }
     }
     return;
   }
   if (t.kind === "self") {
     sfx("ding"); shake(16, 0.4); hitstop(0.08); flash(0.3, "#e35664", 0.5); glitch("invert", 0.5, 1);
-    speak("……ありがとう。これで、安定するよ。", "dread", { hold: 1.6 });
+    // E5 CLEAN BUILD: with every comment deleted, MIKAN has no words left
+    if (GAME.corruption >= 6) clearVoice();
+    else say("S4_SELF");
     t.ref.fix(stage);
     startEnding("patched"); // 演出④: you patched yourself out
     return;
@@ -668,7 +785,9 @@ function applyHammer(t) {
   // kind === 'bug'
   t.ref.fix(stage);
   sfx("ding"); fixJuice(tx, ty);
-  if (t.code === "PLATFORM_COLLISION") speak("……律儀だね。ちゃんと直すんだ、君は。", "cold", { hold: 3 });
+  if (FIX_LINE[t.code]) say(FIX_LINE[t.code]);
+  if (t.code === "PLATFORM_COLLISION") say("S0_04"); // queued: the side-effect apology
+  if (t.code === "UI_COLLIDER") revealHud(); // fallback: fixing the UI exposes the lie too
   hideToastIfClear();
   updateIncursion();
 }
@@ -698,10 +817,11 @@ function revealCrash() {
   }
   stage.crashZone.done = true;
   crash = null;
+  crashDoneAt = GAME.elapsed; idleT = 0;
   shake(11, 0.3); flash(0.2, "#e35664", 0.4); sfx("glitch");
   log("[FATAL] build crashed. tester still running.", "err");
-  speak("……あ。落ちた。", "comedy", { hold: 1.6 });
-  speak("……いや。まだ動いてる。君が。", "cold", { hold: 3.2 });
+  say("S0_CRASH1");
+  say("S0_CRASH2");
 }
 
 // ---------------- render ----------------
@@ -719,6 +839,7 @@ function render() {
   drawBugStains();      // self-rewrite: garbage spreading from bugs you left behind
   drawNotes();
   drawGoal();
+  drawWorldCaret();
   drawPlayer();
   drawParticles(ctx);
   drawFix();
@@ -983,10 +1104,25 @@ function drawCorruption() {
 
 function drawNotes() {
   if (!stage.notes) return;
-  ctx.fillStyle = "#5a6470";
   ctx.font = "13px 'Courier New', monospace";
   ctx.textAlign = "left";
-  for (const n of stage.notes) ctx.fillText(n.text, n.x, n.y);
+  for (const n of stage.notes) {
+    // kj/mei fragments can be gated: camera-bug-only sights, 2nd-visit-only
+    if (n.req === "camera" && !GAME.cameraUnclamped) continue;
+    if (n.req === "run2" && (SAVE.runs || 0) < 2) continue;
+    ctx.fillStyle = n.color || "#5a6470";
+    ctx.fillText(n.text, n.x, n.y);
+  }
+}
+
+// S4_EXIT: the silent walk — the caret waits at the goal's edge and says nothing
+function drawWorldCaret() {
+  if (!worldCaret || !stage.goal) return;
+  if (performance.now() % 1060 < 530) {
+    ctx.fillStyle = "#d7dde2";
+    ctx.font = "16px 'Courier New', monospace";
+    ctx.fillText("▮", stage.goal.x - 34, stage.goal.y + stage.goal.h - 6);
+  }
 }
 
 function drawGoal() {
