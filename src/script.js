@@ -123,6 +123,18 @@ const L = {
   R03: { t: "おかえり。††こっちは、きみが置いてったバグ。元気だよ。", tone: "comedy", hold: 3 },
   R04: { t: "……前と、ちがうんだ。††どっちが ほんとうの きみ?", tone: "dread", hold: 3.4 },
   R05: { t: "3回目。††もう、きみを「未登録」って呼ぶの、へんだよね。", tone: "dread", hold: 3.4 },
+
+  // H — hunt (pillar 0): per-decoy first-hit reactions + the re-break
+  H_REBREAK: { t: "え。††なおしたのに!?", hold: 2.4 },
+  H_S0_DECOY: { t: "それ、囮。††……おしい。", tone: "comedy", hold: 2.4 },
+  H_S1_DECOY: { t: "そこは壊れてない。††……たぶん。", tone: "comedy", hold: 2.4 },
+  H_S2_DECOY: { t: "それ、隣の扉のフラグ。", tone: "comedy", hold: 2.4 },
+  H_S3_HUD: { t: "それは被害者のほう。", tone: "cold", hold: 2.4 },
+  H_S3_LOG: { t: "そこでもない。††……原因は、報告のほう。", tone: "cold", hold: 2.6 },
+  H_S4_D0: { t: "ちがう。", tone: "dread", hold: 1.8 },
+  H_S4_D1: { t: "そこでもない。", tone: "dread", hold: 1.8 },
+  H_S4_D2: { t: "……ねえ。", tone: "dread", hold: 2 },
+  H_S4_D3: { t: "見つからない? ††……鏡、見てみる?", tone: "dread", hold: 3.2 },
 };
 
 // ---- ambient incursion pools (演出② voice, bible §3.2 gating) ----------

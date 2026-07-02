@@ -701,7 +701,10 @@ function respawnPlayer(cause = "fall") {
 function isStableGround(id) {
   if (!id) return false;
   const pl = stage.platforms.find((p) => p.id === id);
-  return !!pl && pl.solid && !pl.uiCollider && id !== "end_wall";
+  // never checkpoint on ground that can vanish: UI colliders, buggy platforms
+  // (toggleable — re-breaking one under a checkpoint would loop the respawn),
+  // and side-effect casualties.
+  return !!pl && pl.solid && !pl.uiCollider && !pl.bug && !pl.sideEffect && id !== "end_wall";
 }
 
 // ---------------- pause / options ----------------
@@ -730,41 +733,61 @@ function updatePauseLabels() {
   if (m) m.textContent = `SOUND: ${GAME.muted ? "OFF" : "ON"}`;
 }
 
-// ---------------- hammer fix (unified) ----------------
+// ---------------- hammer fix (hunt × both truths) ----------------
 // A "fix target" wraps the thing you can hammer, with a rect hitbox:
-//   { kind:'plat'|'bug'|'self', ref, x,y,w,h, fixLine }
+//   { kind:'plat'|'bug'|'decoy'|'self', ref, x,y,w,h, fixLine, mode? }
+// Hunt rules: real nodes and decoys LOOK the same — the hammer is the tell.
+// A FIXED node of a toggleable bug is still a target (mode:'unfix'): hammering
+// it re-breaks the bug. Order, not lockout, is the puzzle.
 function fixTargets() {
   const list = [];
   // lab hammerable platforms (real bug + decoy)
   for (const p of stage.platforms) {
     if (p.hammerable && !p.fixed) {
-      list.push({ kind: "plat", ref: p, x: p.x, y: p.y, w: p.w, h: p.h, fixLine: p.fixLine, real: p.real });
+      list.push({ kind: "plat", ref: p, x: p.x, y: p.y, w: p.w, h: p.h, fixLine: p.fixLine, real: p.real, line: p.line });
     }
   }
-  // active, un-hammered bugs — hammer the glitch marker (or yourself)
+  // decoy nodes — flicker like the real thing, are nothing
+  for (const d of (stage.decoys || [])) {
+    // some decoys only exist while their bug is live (e.g. leaked UI pieces)
+    if (d.whileActive) {
+      const b = stage.bugs.find((bb) => bb.id === d.whileActive);
+      if (!b || b.state !== "active") continue;
+    }
+    list.push({ kind: "decoy", ref: d, x: d.x, y: d.y, w: d.w, h: d.h, fixLine: d.quip, line: d.line });
+  }
+  // bug nodes — active (fix) or fixed-but-toggleable (re-break)
   for (const bug of stage.bugs) {
-    if (bug.state !== "active") continue;
     if (bug.self) {
-      list.push({ kind: "self", ref: bug, x: player.x - 8, y: player.y - 8, w: player.w + 16, h: player.h + 16, fixLine: bug.fixLine });
-    } else if (bug.marker) {
+      if (bug.state === "active") {
+        list.push({ kind: "self", ref: bug, x: player.x - 8, y: player.y - 8, w: player.w + 16, h: player.h + 16, fixLine: bug.fixLine });
+      }
+      continue;
+    }
+    if (!bug.marker) continue;
+    if (bug.state === "active") {
       const m = bug.marker;
       list.push({ kind: "bug", ref: bug, x: m.x - 26, y: m.y - 20, w: 52, h: 96, fixLine: bug.fixLine, code: bug.code });
+    } else if (bug.state === "fixed" && bug.toggleable) {
+      const m = bug.marker;
+      list.push({ kind: "bug", mode: "unfix", ref: bug, x: m.x - 26, y: m.y - 20, w: 52, h: 96, fixLine: bug.fixLine, code: bug.code });
     }
   }
   return list;
 }
 function nearestFixTarget() {
   if (!player.onGround) return null;
-  let best = null, bestD = 1e9;
+  let best = null, bestD = 1e9, bestSelf = null;
   const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
   for (const t of fixTargets()) {
     const inX = player.x + player.w > t.x - 40 && player.x < t.x + t.w + 40;
     const dy = Math.abs(pcy - (t.y + t.h / 2));
     if (!inX || dy > 110) continue;
+    if (t.kind === "self") { bestSelf = t; continue; } // yourself only as a last resort
     const d = Math.abs(pcx - (t.x + t.w / 2));
     if (d < bestD) { bestD = d; best = t; }
   }
-  return best;
+  return best || bestSelf;
 }
 function startFix(target) { fixState = { target, t: 0, taps: 0 }; }
 function tickFix(dt) {
@@ -790,21 +813,23 @@ const FIX_LINE = {
 };
 function applyHammer(t) {
   const tx = t.x + t.w / 2, ty = t.y + t.h / 2;
-  if (t.kind === "plat") {
-    if (t.real) {
+  if (t.kind === "plat" || t.kind === "decoy") {
+    if (t.kind === "plat" && t.real) {
       t.ref.solid = true; t.ref.glitchy = false; t.ref.fixed = true;
       GAME.corruption += 1; sfx("ding"); fixJuice(tx, ty);
       log(`[INFO] ${t.ref.id}: ${t.fixLine} — patched`, "info");
-    } else {
-      sfx("tonk"); shake(3, 0.1);
-      burst(tx, ty, { n: 4, color: "#e3c356", spd: 120, life: 0.3 });
-      log(`[INFO] ${t.ref.id}: ${t.fixLine}`, "meta");
-      // decoy persistence gets rewarded (DC series)
-      t.ref.tonks = (t.ref.tonks || 0) + 1;
-      if (t.ref.tonks === 1) say("DC01");
-      if (t.ref.tonks === 3) say("DC02");
-      if (t.ref.tonks === 10) { say("DC03"); t.ref.fixLine = "// property of tester"; }
+      return;
     }
+    // a decoy: tonk. the knowledge is the reward.
+    sfx("tonk"); shake(3, 0.1);
+    burst(tx, ty, { n: 4, color: "#e3c356", spd: 120, life: 0.3 });
+    log(`[INFO] ${t.ref.id}: ${t.fixLine}`, "meta");
+    // first hit: this decoy's own line; persistence gets the DC series
+    t.ref.tonks = (t.ref.tonks || 0) + 1;
+    if (t.ref.tonks === 1 && t.line) say(t.line);
+    else if (t.ref.tonks === 1) say("DC01");
+    if (t.ref.tonks === 3) say("DC02");
+    if (t.ref.tonks === 10) { say("DC03"); if (t.kind === "plat") t.ref.fixLine = "// property of tester"; else t.ref.quip = "// property of tester"; }
     return;
   }
   if (t.kind === "self") {
@@ -817,12 +842,20 @@ function applyHammer(t) {
     return;
   }
   // kind === 'bug'
+  if (t.mode === "unfix") {
+    // re-breaking a fix you already made (toggleable bugs only)
+    t.ref.unfix(stage);
+    sfx("glitch"); shake(7, 0.2); glitch("tear", 0.3, 1);
+    burst(tx, ty, { n: 10, color: ["#e35664", "#e3c356"], spd: 220, life: 0.4, grav: 600 });
+    say("H_REBREAK");
+    updateIncursion();
+    return;
+  }
   t.ref.fix(stage);
   sfx("ding"); fixJuice(tx, ty);
   if (FIX_LINE[t.code]) say(FIX_LINE[t.code]);
   // NG+: choosing the opposite of last run (R04)
   if ((SAVE.clears || 0) >= 1 && SAVE.bugHistory && SAVE.bugHistory[t.ref.id] === "left") say("R04");
-  if (t.code === "PLATFORM_COLLISION") say("S0_04"); // queued: the side-effect apology
   if (t.code === "UI_COLLIDER") revealHud(); // fallback: fixing the UI exposes the lie too
   hideToastIfClear();
   updateIncursion();
@@ -1043,6 +1076,7 @@ function drawHazards() {
 
 function targetLabel(t) {
   if (t.kind === "self") return "TESTER";
+  if (t.kind === "decoy") return "???";
   if (t.kind === "bug") return t.code || "BUG";
   return (t.ref && t.ref.id) || "target";
 }
@@ -1051,21 +1085,28 @@ function corruptStr(s) {
 }
 
 function drawFix() {
-  // glitch markers so you can see WHERE to hammer (bug/self; lab platforms glow themselves)
+  // HUNT: real nodes and decoys render IDENTICALLY — an anonymous flickering
+  // glitch. No labels, no codes. The hammer is the only way to know.
   for (const t of fixTargets()) {
-    if (t.kind === "plat") continue;
+    if (t.kind === "plat" || t.kind === "self") continue; // plats glow themselves; you are you
     const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
     const j = (Math.sin(performance.now() / 70 + cx) * 2) | 0;
-    ctx.fillStyle = "rgba(227,86,100,0.16)"; ctx.fillRect(cx - 15 + j, cy - 15, 30, 30);
-    ctx.strokeStyle = "#e35664"; ctx.setLineDash([4, 3]);
+    ctx.fillStyle = t.mode === "unfix" ? "rgba(86,227,159,0.14)" : "rgba(227,86,100,0.16)";
+    ctx.fillRect(cx - 15 + j, cy - 15, 30, 30);
+    ctx.strokeStyle = t.mode === "unfix" ? "#56e39f" : "#e35664";
+    ctx.setLineDash([4, 3]);
     ctx.strokeRect(cx - 15, cy - 15, 30, 30); ctx.setLineDash([]);
-    ctx.fillStyle = "#e35664"; ctx.font = "9px 'Courier New', monospace"; ctx.textAlign = "center";
-    ctx.fillText(targetLabel(t), cx, cy - 20); ctx.textAlign = "left";
+    // an unreadable glyph instead of a name — what IS this?
+    ctx.fillStyle = t.mode === "unfix" ? "#56e39f" : "#e35664";
+    ctx.font = "12px 'Courier New', monospace"; ctx.textAlign = "center";
+    ctx.fillText(CORRUPT_GLYPHS[((performance.now() / 160 + cx) | 0) % CORRUPT_GLYPHS.length], cx, cy + 4);
+    ctx.textAlign = "left";
   }
-  // "[E] FIX" prompt on the nearest target
+  // prompt on the nearest target
   if (fixPrompt && !fixState) {
     ctx.fillStyle = "#e3c356"; ctx.font = "12px 'Courier New', monospace"; ctx.textAlign = "center";
-    ctx.fillText("[E] FIX", fixPrompt.x + fixPrompt.w / 2, fixPrompt.y - 6);
+    const label = fixPrompt.kind === "self" ? "[E] FIX ???" : fixPrompt.mode === "unfix" ? "[E] RE-BREAK" : "[E] FIX";
+    ctx.fillText(label, fixPrompt.x + fixPrompt.w / 2, fixPrompt.y - 6);
     ctx.textAlign = "left";
   }
   if (!fixState) return;
@@ -1086,16 +1127,18 @@ function drawFix() {
   ctx.fillStyle = "rgba(12,14,18,0.92)"; ctx.fillRect(bx, by, bw, bh);
   ctx.strokeStyle = corrupt ? "#e35664" : "#56e39f"; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
   ctx.font = "11px 'Courier New', monospace"; ctx.textAlign = "left";
-  const id = targetLabel(t);
-  ctx.fillStyle = "#7f8a96"; ctx.fillText(corrupt ? `> p4tch ${corruptStr(id)}` : `> patch ${id}`, bx + 8, by + 18);
+  const isDecoy = t.kind === "decoy" || (t.kind === "plat" && !t.real);
+  const verb = t.mode === "unfix" ? "unpatch" : isDecoy ? "inspect" : "patch";
+  const id = isDecoy ? "???" : targetLabel(t); // the hunt: names only on commit
+  ctx.fillStyle = "#7f8a96"; ctx.fillText(corrupt ? corruptStr(`> ${verb} ${id}`) : `> ${verb} ${id}`, bx + 8, by + 18);
   const full = `> ${corrupt ? corruptStr(t.fixLine || "") : (t.fixLine || "")}`;
   const shown = Math.floor((fixState.t / (FIX_DUR * 0.8)) * full.length);
-  ctx.fillStyle = corrupt ? "#e35664" : (t.kind === "plat" && !t.real ? "#e3c356" : "#9fe9c7");
+  ctx.fillStyle = corrupt ? "#e35664" : (isDecoy ? "#e3c356" : "#9fe9c7");
   ctx.fillText(full.slice(0, Math.max(0, shown)), bx + 8, by + 34);
   if (fixState.t > FIX_DUR * 0.85) {
-    const ok = !(t.kind === "plat" && !t.real);
-    ctx.fillStyle = ok ? (corrupt ? "#e35664" : "#56e39f") : "#e35664";
-    ctx.fillText(ok ? (corrupt ? "✓ p4tch3d" : "✓ patched") : "✗ not a bug", bx + 8, by + 48);
+    const done = t.mode === "unfix" ? "↺ re-broken" : isDecoy ? "✗ not a bug" : (corrupt ? "✓ p4tch3d" : "✓ patched");
+    ctx.fillStyle = t.mode === "unfix" ? "#e35664" : isDecoy ? "#e3c356" : (corrupt ? "#e35664" : "#56e39f");
+    ctx.fillText(done, bx + 8, by + 48);
   }
 }
 

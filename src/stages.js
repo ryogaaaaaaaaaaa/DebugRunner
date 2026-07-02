@@ -13,13 +13,14 @@ import { log } from "./ui.js";
 
 const find = (stage, id) => stage.platforms.find((p) => p.id === id);
 
-// ===== STAGE 0 — "TEST BUILD v0.3.1" : teaches fix-vs-use, then the meta hook =====
-// First impression stage. Two beats:
-//   1. BUG#01 (platform collider) — the hammer-fix teach (optional shortcut).
-//   2. The PIT — no floor across it. Crossing it triggers a FAKE CRASH: the game
-//      "throws", a real-looking stack trace slams the screen... and the trace
-//      lines settle into the pit as the stepping stones you walk across.
-//      The build crashed. You keep running on the wreckage. (handled in main.js)
+// ===== STAGE 0 — "TEST BUILD v0.3.1" : the HUNT teach, then the meta hook =====
+// Hunt × both-truths renovation. Beats:
+//   1. Two things flicker: a floating DECOY (perfectly fine) and the BRIDGE
+//      over a bottomless gap (collider off — you fall through). No markers,
+//      no labels: behavior is the tell. Hammer the bridge to cross.
+//      Hammering a fixed thing again RE-BREAKS it (toggle; see main.js).
+//   2. The CRASH PIT — crossing its edge triggers the fake crash; the stack
+//      trace settles into the pit as stepping stones. (handled in main.js)
 function buildStage0() {
   const stage = {
     name: "STAGE 0 — TEST BUILD",
@@ -27,19 +28,23 @@ function buildStage0() {
     spawn: { x: 60, y: 520 },
     goal: { x: 1800, y: 120, w: 26, h: 480 },
     // the fake crash fires when the tester steps up to the edge of the pit
-    crashZone: { triggerX: 505 },
+    crashZone: { triggerX: 640 },
     platforms: [
-      { id: "ground_start", x: 0,    y: 600, w: 560, h: 120, solid: true },
-      // BUG#01 shortcut platform up-high (optional; the teach, not the path)
-      { id: "buggy",        x: 300,  y: 470, w: 200, h: 24,  solid: true, bug: true },
-      { id: "decor",        x: 300,  y: 360, w: 90,  h: 20,  solid: true, sideEffect: true },
-      // THE PIT (x 560..1200) — no normal floor. The crash trace fills it.
-      // crash platforms: intangible + invisible until the "crash" reveals them.
-      { id: "trace0", x: 610,  y: 545, w: 150, h: 20, solid: false, crash: true, label: "at Stage.update (build.js:512)" },
-      { id: "trace1", x: 800,  y: 478, w: 160, h: 20, solid: false, crash: true, label: "at Tester.step (runner.js:404)" },
-      { id: "trace2", x: 1005, y: 545, w: 160, h: 20, solid: false, crash: true, label: "at frame (main.js:66)" },
-      { id: "ground_far",   x: 1200, y: 600, w: 700, h: 120, solid: true },
-      { id: "end_wall",     x: 1876, y: 0,   w: 24,  h: 720, solid: true },
+      { id: "ground_a",  x: 0,   y: 600, w: 270, h: 120, solid: true },
+      // the DECOY: flickers suspiciously, works perfectly ("tonk, not a bug")
+      { id: "decoy_plat", x: 130, y: 480, w: 120, h: 20, solid: true, glitchy: true,
+        hammerable: true, real: false, fixLine: "// looks fine to me -kj",
+        line: "H_S0_DECOY" },
+      // the REAL bug: bridge over a bottomless gap, collider off once active.
+      // Falling through = respawn (the symptom that gives it away).
+      { id: "bridge",    x: 270, y: 600, w: 220, h: 20,  solid: true, bug: true },
+      { id: "ground_b",  x: 490, y: 600, w: 210, h: 120, solid: true },
+      // THE CRASH PIT (x 700..1340) — no floor. The crash trace fills it.
+      { id: "trace0", x: 750,  y: 545, w: 170, h: 20, solid: false, crash: true, label: "at Stage.update (build.js:512)" },
+      { id: "trace1", x: 950,  y: 478, w: 170, h: 20, solid: false, crash: true, label: "at Tester.step (runner.js:404)" },
+      { id: "trace2", x: 1160, y: 545, w: 160, h: 20, solid: false, crash: true, label: "at frame (main.js:66)" },
+      { id: "ground_far", x: 1340, y: 600, w: 560, h: 120, solid: true },
+      { id: "end_wall",   x: 1876, y: 0,   w: 24,  h: 720, solid: true },
     ],
     bugs: [],
   };
@@ -48,21 +53,25 @@ function buildStage0() {
     {
       id: "BUG#01", code: "PLATFORM_COLLISION",
       desc: "// platform collider disabled? falls right through. -kj",
-      state: "dormant", triggerX: 200,
-      marker: { x: 372, y: 566 }, fixLine: "collider = solid;",
+      state: "dormant", triggerX: 120,
+      marker: { x: 290, y: 610 }, fixLine: "collider = solid;",
+      toggleable: true,
       activate(s) {
         this.state = "active";
-        find(s, "buggy").solid = false;
-        find(s, "buggy").glitchy = true;
-        log("[WARN] entity 'platform_03' collider = null", "warn");
+        find(s, "bridge").solid = false;
+        find(s, "bridge").glitchy = true;
+        log("[WARN] a collider went null somewhere", "warn");
       },
       fix(s) {
         this.state = "fixed";
-        const b = find(s, "buggy"); b.solid = true; b.glitchy = false;
-        const d = find(s, "decor"); d.solid = false; d.glitchy = true; d.fading = true;
+        const b = find(s, "bridge"); b.solid = true; b.glitchy = false;
         GAME.corruption += 1;
-        log("[INFO] platform_03 collider restored", "info");
-        log("[WARN] side effect: 'decor_block' destabilized", "warn");
+        log("[INFO] bridge collider restored", "info");
+      },
+      unfix(s) {
+        this.state = "active";
+        const b = find(s, "bridge"); b.solid = false; b.glitchy = true;
+        log("[WARN] bridge collider = null (re-broken by tester)", "warn");
       },
       ignore() {
         this.state = "ignored";
@@ -74,13 +83,17 @@ function buildStage0() {
   return stage;
 }
 
-// ===== STAGE 1 — "Shortcut" : BUG#03 gravity + BUG#05 camera =====
-// Flat intro where both bugs trigger, then a pit. Two ways across:
-//   FIX gravity  -> normal gravity, hop the stepping platforms (safe, long).
-//   IGNORE grav  -> floaty low gravity, big leaps + reach the camera secret.
+// ===== STAGE 1 — "Paradox" : BUG#03 gravity + BUG#05 camera =====
+// The "one bug, both truths" stage (promoted from the paradox lab):
+//   USE low gravity  -> the high fragment ledge is reachable ONLY while floaty.
+//   FIX gravity      -> the spike slot before the goal fits ONLY the compact
+//                       normal-g hop (a low-g jump skewers you).
+// One gravity NODE on the start ground; it's TOGGLEABLE (hammer a fixed node
+// to re-break it), so the drama is ORDER, not lockout. Fixing twice costs
+// corruption twice — planning ahead is the clean run.
 function buildStage1() {
   const stage = {
-    name: "STAGE 1 — SHORTCUT",
+    name: "STAGE 1 — PARADOX",
     world: { w: 2300, h: 1000 },
     spawn: { x: 50, y: 800 },
     goal: { x: 2180, y: 380, w: 26, h: 480 },
@@ -88,40 +101,43 @@ function buildStage1() {
       // flat intro (both bugs trigger here, before any platforming)
       { id: "ground_start", x: 0,    y: 860, w: 700,  h: 140, solid: true },
 
-      // upper stepping stones across the pit (the quick route for clean hops).
+      // stepping stones across the pit
       { id: "step1", x: 745,  y: 815, w: 150, h: 22, solid: true },
       { id: "step2", x: 925,  y: 805, w: 150, h: 22, solid: true },
       { id: "step3", x: 1105, y: 805, w: 150, h: 22, solid: true },
-      // step4 stops short of the ground_far wall so there is a ceiling-free
-      // column to jump up through when climbing out of the lower ledge.
       { id: "step4", x: 1285, y: 815, w: 110, h: 22, solid: true },
 
-      // continuous lower ledge under the pit — a safety floor. Miss a step and
-      // you drop here and keep going, instead of dying. Keeps the stage
-      // completable in any gravity / on any timing.
+      // continuous lower safety ledge under the pit
       { id: "lower", x: 680, y: 905, w: 770, h: 95, solid: true },
 
-      // far ground -> run to the goal
+      // far ground: spike slot, then the goal
       { id: "ground_far", x: 1430, y: 860, w: 846, h: 140, solid: true },
 
       // floaty platform that only "exists" because of the gravity bug.
-      // FIX gravity -> it destabilizes and fades (the side effect).
+      // FIX gravity -> it destabilizes and fades (a scar that does NOT come
+      // back if you re-break gravity later — meddling leaves marks).
       { id: "floaty", x: 955, y: 660, w: 110, h: 20, solid: true, sideEffect: true },
 
-      // secret high ledge + collectible. The camera bug reveals it; it is only
-      // reachable with low (ignored) gravity. Pure bonus / "use the bug" reward.
+      // high fragment ledge — reachable ONLY with low (bugged) gravity.
       { id: "secret", x: 920, y: 480, w: 150, h: 20, solid: true },
+
+      // the spike slot: hop this wall with a compact normal-g arc. The tall
+      // low-g arc rises into the spikes. (must-FIX gate)
+      { id: "slot_wall", x: 1560, y: 800, w: 40, h: 60, solid: true },
 
       { id: "end_wall", x: 2276, y: 0, w: 24, h: 1000, solid: true },
     ],
-    // reward for the low-gravity + camera IGNORE route (on the secret ledge)
-    fragments: [{ x: 995, y: 445, got: false }],
-    // kj/mei fragments (SCRIPT_JP.md F-series) — up high, where only the
-    // camera bug lets you see (F04 is the prj_mikan origin note, the key)
+    hazards: [{ id: "slot_spikes", x: 1400, y: 600, w: 320, h: 30 }],
+    // route hints + kj/mei fragments (SCRIPT_JP.md F-series — F04, the
+    // prj_mikan origin note, is only visible via the camera bug)
     notes: [
+      { x: 930, y: 446, text: "◈ low-gravity only" },
+      { x: 1400, y: 570, text: "low-g jumps into the spikes" },
       { x: 860, y: 466, text: "// この景色を見せたくてこの面つくった。カメラのバグは……まあ、あとで。 -mei", color: "#4d6b5c" },
       { x: 900, y: 402, text: "// prj_mikan: 「未完」のまま終わらせないように、って願掛け。あとみかん好きだから。 -mei", color: "#4d6b5c", req: "camera" },
     ],
+    // reward for the low-gravity route (on the high ledge)
+    fragments: [{ x: 995, y: 445, got: false }],
     bugs: [],
   };
 
@@ -129,11 +145,12 @@ function buildStage1() {
     {
       id: "BUG#05", code: "CAMERA_CLAMP",
       desc: "// camera clamp disabled — viewport drifting up. -mei",
-      state: "dormant", triggerX: 180,
+      state: "dormant", triggerX: 160,
       marker: { x: 230, y: 826 }, fixLine: "clamp_to_world = true;",
+      toggleable: true,
       activate() {
         this.state = "active";
-        GAME.cameraUnclamped = true; // reveals the upper area / secret ledge
+        GAME.cameraUnclamped = true; // reveals the upper area / fragment ledge
         log("[WARN] camera2d clamp_to_world = false", "warn");
       },
       fix() {
@@ -141,7 +158,12 @@ function buildStage1() {
         GAME.cameraUnclamped = false;
         GAME.corruption += 1;
         log("[INFO] camera clamp restored", "info");
-        log("[WARN] side effect: route hint no longer visible", "warn");
+        log("[WARN] side effect: the upper route is out of view now", "warn");
+      },
+      unfix() {
+        this.state = "active";
+        GAME.cameraUnclamped = true;
+        log("[WARN] camera clamp released again", "warn");
       },
       ignore() {
         this.state = "ignored";
@@ -152,8 +174,9 @@ function buildStage1() {
     {
       id: "BUG#03", code: "GRAVITY_SCALE",
       desc: "// gravity_scale = 0.35?? everything floats. -kj",
-      state: "dormant", triggerX: 430,
-      marker: { x: 500, y: 826 }, fixLine: "gravity_scale = 1.0;",
+      state: "dormant", triggerX: 300,
+      marker: { x: 560, y: 826 }, fixLine: "gravity_scale = 1.0;",
+      toggleable: true,
       activate() {
         this.state = "active";
         GAME.gravityScale = 0.4; // floaty
@@ -163,10 +186,17 @@ function buildStage1() {
         this.state = "fixed";
         GAME.gravityScale = 1.0;
         const f = find(s, "floaty");
-        f.solid = false; f.glitchy = true; f.fading = true; // side effect
+        if (f.solid) {
+          f.solid = false; f.glitchy = true; f.fading = true; // side effect (permanent scar)
+          log("[WARN] side effect: 'floaty' platform fell out of the build", "warn");
+        }
         GAME.corruption += 1;
         log("[INFO] gravity_scale restored to 1.00", "info");
-        log("[WARN] side effect: 'floaty' platform fell out of the build", "warn");
+      },
+      unfix() {
+        this.state = "active";
+        GAME.gravityScale = 0.4;
+        log("[WARN] gravity_scale = 0.40 (re-broken by tester)", "warn");
       },
       ignore() {
         this.state = "ignored";
@@ -174,6 +204,12 @@ function buildStage1() {
       },
       get resolved() { return this.state === "fixed" || this.state === "ignored"; },
     },
+  ];
+
+  // decoy node: flickers on the start ground, is nothing
+  stage.decoys = [
+    { id: "decoy_totem", x: 340, y: 810, w: 34, h: 50,
+      quip: "// physics looks fine HERE -mei", line: "H_S1_DECOY" },
   ];
   return stage;
 }
@@ -229,10 +265,12 @@ function buildStage2() {
 
   stage.bugs = [
     {
+      // HUNT twist: the symptom is the door at x1500 — but the CAUSE is a
+      // desynced state flag way back near the start. Real debugging.
       id: "BUG#02", code: "DOOR_STATE",
       desc: "// gate won't open. state flag desync? -mei",
       state: "dormant", triggerX: 360,
-      marker: { x: 1460, y: 826 }, fixLine: "gate.open = true;",
+      marker: { x: 700, y: 826 }, fixLine: "gate_A.state = open;",
       activate() {
         this.state = "active";
         log("[WARN] door 'gate_A' stuck closed (state desync)", "warn");
@@ -243,9 +281,10 @@ function buildStage2() {
         d.solid = false; d.fading = true; d.glitchy = false;
         wake(s); // side-effect chain: opening the gate re-enables the guard AI
         GAME.corruption += 1;
-        log("[INFO] gate_A opened", "info");
+        log("[INFO] gate_A opened — far away, something moved", "info");
         log("[WARN] side effect: enemy 'guard_01' AI re-enabled", "warn");
       },
+      // NOT toggleable: an opened gate stays open (some fixes can't be unfixed)
       ignore() {
         this.state = "ignored";
         log("[INFO] BUG#02 left unresolved — gate stays shut", "meta");
@@ -268,12 +307,19 @@ function buildStage2() {
         log("[INFO] enemy AI restored — guard_01 is active", "info");
         log("[WARN] careful: it can reach the tester now", "warn");
       },
+      // NOT toggleable: a woken AI does not go back to sleep
       ignore() {
         this.state = "ignored";
         log("[INFO] BUG#04 left unresolved — guard stays frozen", "meta");
       },
       get resolved() { return this.state === "fixed" || this.state === "ignored"; },
     },
+  ];
+
+  // decoy: a second state flag right next to the door — the obvious wrong answer
+  stage.decoys = [
+    { id: "decoy_flag", x: 1420, y: 810, w: 34, h: 50,
+      quip: "// this one is gate_B. wrong flag.", line: "H_S2_DECOY" },
   ];
   return stage;
 }
@@ -316,10 +362,12 @@ function buildStage3() {
 
   stage.bugs = [
     {
+      // HUNT twist: the real node is the TOAST — the bug report itself is
+      // what leaked into the world. The other UI pieces are symptoms (decoys).
       id: "BUG#06", code: "UI_COLLIDER",
       desc: "// HUD/console have collision now?? -mei",
       state: "dormant", triggerX: 90,
-      marker: { x: 150, y: 426 }, fixLine: "ui.collision = off;",
+      marker: { x: 260, y: 340 }, fixLine: "ui.collision = off;",
       activate(s) {
         this.state = "active";
         for (const p of uiParts(s)) { p.solid = true; p.glitchy = true; }
@@ -332,6 +380,7 @@ function buildStage3() {
         log("[INFO] UI colliders removed", "info");
         log("[WARN] side effect: the platforms you stood on are gone", "warn");
       },
+      // NOT toggleable: the faded UI does not come back
       ignore() {
         this.state = "ignored";
         log("[INFO] BUG#06 left unresolved — the UI is solid", "meta");
@@ -339,13 +388,23 @@ function buildStage3() {
       get resolved() { return this.state === "fixed" || this.state === "ignored"; },
     },
   ];
+
+  // decoys: the other leaked UI pieces — solid symptoms, not the cause.
+  // They stop being targets once the bug is fixed (the UI fades out).
+  stage.decoys = [
+    { id: "decoy_hud", x: 410, y: 340, w: 160, h: 26, whileActive: "BUG#06",
+      quip: "// symptom, not cause. -mei", line: "H_S3_HUD" },
+    { id: "decoy_log", x: 590, y: 360, w: 150, h: 40, whileActive: "BUG#06",
+      quip: "// symptom, not cause. -mei", line: "H_S3_LOG" },
+  ];
   return stage;
 }
 
 // ===== STAGE 4 — "Patch" : 演出④ — the tester becomes the fix target =====
-// The build detects an unregistered entity — you. Now the fix target is
-// yourself: raise the hammer at your own feet to patch (canonical ending), or
-// walk to the exit and refuse (alternate ending). Handled in main.js.
+// The HUNT's final joke: the corridor is lined with flickering nodes and every
+// single one is a decoy ("not a bug", "not a bug", "not a bug"...). The only
+// real fix target is you. Hammer yourself to patch (canonical ending), or walk
+// to the exit and refuse (alternate ending). Handled in main.js.
 function buildStage4() {
   const stage = {
     name: "STAGE 4 — PATCH",
@@ -356,6 +415,13 @@ function buildStage4() {
     platforms: [
       { id: "ground",   x: 0,    y: 490, w: 1200, h: 50, solid: true },
       { id: "end_wall", x: 1176, y: 0,   w: 24,   h: 540, solid: true },
+    ],
+    // every node here is a decoy — the escalating joke of the finale
+    decoys: [
+      { id: "d0", x: 420, y: 440, w: 34, h: 50, quip: "// not a bug", line: "H_S4_D0" },
+      { id: "d1", x: 560, y: 440, w: 34, h: 50, quip: "// not a bug", line: "H_S4_D1" },
+      { id: "d2", x: 700, y: 440, w: 34, h: 50, quip: "// not a bug", line: "H_S4_D2" },
+      { id: "d3", x: 840, y: 440, w: 34, h: 50, quip: "// not a bug", line: "H_S4_D3" },
     ],
     enemies: [],
     // 2nd-visit-only traces of mei (F06/F07) — her promise, then her last commit
@@ -475,6 +541,7 @@ export function buildStage(index) {
   const s = STAGE_BUILDERS[index]();
   if (!s.enemies) s.enemies = [];       // STAGE 0 / 1 have none
   if (!s.fragments) s.fragments = [];   // most stages have none
-  if (!s.hazards) s.hazards = [];       // spikes etc (lab only, for now)
+  if (!s.hazards) s.hazards = [];       // spikes etc
+  if (!s.decoys) s.decoys = [];         // hunt decoy nodes
   return s;
 }
