@@ -255,3 +255,34 @@ export function tickVoice(dt) {
     if (!voiceQ.length) n.className = "";
   }
 }
+
+// MIKAN's presence: an anonymous heartbeat that weakens as she's fixed away.
+// life 1 → strong/steady; life 0 → flatline. A fix makes it flinch red.
+let mhT = 0;
+export function renderMikanHeart(dt) {
+  const box = el("mikan-heart");
+  if (!box) return;
+  const pulse = box.querySelector(".mh-pulse");
+  if (!pulse) return;
+  if (GAME.mikanFlinch > 0) GAME.mikanFlinch = Math.max(0, GAME.mikanFlinch - dt);
+  const life = GAME.mikanLife ?? 1;
+  const flinch = GAME.mikanFlinch > 0;
+
+  if (life <= 0.05) { // flatline — she's gone
+    pulse.textContent = "▬▬▬▬▬";
+    pulse.style.color = "#3a4552";
+    pulse.style.opacity = "0.4";
+    pulse.style.transform = "none";
+    return;
+  }
+  // heartbeat: slower and fainter as life drops (alive ~0.7s, dying ~2.6s)
+  mhT += dt;
+  const period = 0.7 + (1 - life) * 1.9;
+  if (mhT >= period) mhT = 0;
+  const thump = mhT < 0.13;               // the "beat" window
+  const base = 0.22 + life * 0.55;
+  pulse.textContent = "▮";
+  pulse.style.opacity = String(flinch ? 1 : thump ? Math.min(1, base + 0.4) : base);
+  pulse.style.color = flinch ? "#ff5f6e" : "#e35664";
+  pulse.style.transform = flinch ? `translateX(${((Math.random() * 5) | 0) - 2}px)` : "none";
+}

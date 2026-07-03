@@ -146,3 +146,10 @@ export function musicWholeOnce() {
   MUSIC.forceClean = true;
   MUSIC.transpose = 0;
 }
+
+// a fix lands: the song catches its breath for a beat — like a wince
+export function musicFlinch() {
+  const ctx = audioCtx();
+  if (!ctx) return;
+  MUSIC.suspendUntil = ctx.currentTime + 0.14;
+}

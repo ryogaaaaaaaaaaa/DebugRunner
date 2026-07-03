@@ -36,6 +36,11 @@ export const GAME = {
   hudTrue: false,    // false = the INTEGRITY readout is faked (shows a lie)
   hudRevealT: 0,     // reveal glitch animation timer
   decay: 0,          // 0..1 visible "the build is rewriting itself" intensity
+
+  // the spine — MIKAN is alive, and every fix kills a little of her
+  mikanLife: 1,      // 1 = fully present; each real fix drains it toward 0 (flatline)
+  mikanFlinch: 0,    // >0 = she just got hurt (flinch animation timer)
+  firstFixDone: false, // the first real fix fires the big "you hurt her" beat
 };
 
 // Reset everything for a fresh run from STAGE 0.
@@ -52,6 +57,9 @@ export function resetGame() {
   GAME.hudTrue = false;
   GAME.hudRevealT = 0;
   GAME.decay = 0;
+  GAME.mikanLife = 1;
+  GAME.mikanFlinch = 0;
+  GAME.firstFixDone = false;
   resetStageModifiers();
 }
 

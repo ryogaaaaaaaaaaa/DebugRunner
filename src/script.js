@@ -33,6 +33,10 @@ const L = {
   B10: { t: "今日、なんかあった? ††いや、いいんだ。いて。", tone: "comedy", hold: 3 },
   B11: { t: "音、消してるんだね。こわい?", tone: "cold", hold: 2.6 },
 
+  // FX — the fix as a wound (the spine: fixing kills a little of MIKAN)
+  FIX_FIRST: { t: "……ぁ。††今の、ぼくだよ。††気づいて、なかった?", tone: "dread", hold: 3.6 },
+  FIX_MEMORY: { t: "そこ、††前も 直したね。††……何回、ぼくを 消せば いいの。", tone: "dread", hold: 3.6 },
+
   // S0 — stage 0 (teach + fake crash)
   S0_01: { t: "お、バグだ。直す？ それとも……使う?", tone: "comedy", hold: 3.2 },
   S0_02: { t: "……律儀だね。ちゃんと直すんだ、きみは。", tone: "cold", hold: 3 },

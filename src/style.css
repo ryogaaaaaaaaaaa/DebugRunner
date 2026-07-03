@@ -111,6 +111,19 @@ html, body {
 .title-shifted #title-ver::after { content: "▮▮"; animation-duration: 0.5s; }
 .title-shifted #title-foot { color: var(--err); }
 
+/* MIKAN's presence — an anonymous heartbeat, top-center under the HUD.
+   Drops/fades as you fix her away (driven per-frame by renderMikanHeart). */
+#mikan-heart {
+  position: absolute;
+  top: 30px; left: 50%; transform: translateX(-50%);
+  z-index: 6;
+  font: 13px 'Courier New', monospace;
+  letter-spacing: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#mikan-heart .mh-pulse { color: #e35664; transition: opacity 0.08s linear; }
+
 /* ---------- toast ---------- */
 #toast {
   position: absolute;

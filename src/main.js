@@ -10,11 +10,11 @@ import {
   showClear, hideClear, emitMetaLine, glitchBuildLabel, setIncursionClass,
   showTitle, hideTitle,
   showEnding, hideEnding, pushEndingLine, showEndingRestart,
-  setMeta, tickVoice, clearVoice,
+  setMeta, tickVoice, clearVoice, renderMikanHeart,
 } from "./ui.js";
 import { loadSave, writeSave, markSeen, wipeDetected } from "./save.js";
 import { say, sayAmbient, resetScript } from "./script.js";
-import { MUSIC, startMusic, stopMusic, setMusicIntensity, musicSilence, musicKeyDrop, musicWholeOnce } from "./music.js";
+import { MUSIC, startMusic, stopMusic, setMusicIntensity, musicSilence, musicKeyDrop, musicWholeOnce, musicFlinch } from "./music.js";
 
 const integrity = () => Math.max(0, 100 - GAME.corruption * 15);
 
@@ -806,6 +806,25 @@ function fixJuice(tx, ty) {
   shake(11, 0.28); hitstop(0.06); flash(0.16, "#56e39f", 0.35);
   burst(tx, ty, { n: 16, color: ["#56e39f", "#9fe9c7", "#d7dde2"], spd: 300, life: 0.5, grav: 700, up: 60 });
 }
+// the spine: a real fix wounds MIKAN. Her heartbeat drops, she flinches, the
+// song winces. The FIRST time is the beat that makes you not want to do it again.
+// Returns true if it consumed the line (first-fix beat), so callers skip the
+// ordinary per-bug fix line. `code` is the bug id for the memory weapon.
+function hurtMikan(id) {
+  GAME.mikanLife = Math.max(0, GAME.mikanLife - 0.17);
+  GAME.mikanFlinch = 0.45;
+  musicFlinch();
+  if (!GAME.firstFixDone) {
+    GAME.firstFixDone = true;
+    hitstop(0.12); flash(0.14, "#e35664", 0.3); shake(6, 0.25);
+    clearVoice(); // the wound cuts her off — whatever she was saying, she gasps
+    say("FIX_FIRST");
+    return true;
+  }
+  // memory as a weapon: you fixed this very bug last run, too
+  if (id && (SAVE.clears || 0) >= 1 && SAVE.bugHistory && SAVE.bugHistory[id] === "fixed") say("FIX_MEMORY");
+  return false;
+}
 // per-bug fix reactions (SCRIPT_JP.md *_F lines)
 const FIX_LINE = {
   PLATFORM_COLLISION: "S0_02", GRAVITY_SCALE: "S1_GRAV_F", CAMERA_CLAMP: "S1_CAM_F",
@@ -818,6 +837,7 @@ function applyHammer(t) {
       t.ref.solid = true; t.ref.glitchy = false; t.ref.fixed = true;
       GAME.corruption += 1; sfx("ding"); fixJuice(tx, ty);
       log(`[INFO] ${t.ref.id}: ${t.fixLine} — patched`, "info");
+      hurtMikan(t.ref.id);
       return;
     }
     // a decoy: tonk. the knowledge is the reward.
@@ -853,9 +873,11 @@ function applyHammer(t) {
   }
   t.ref.fix(stage);
   sfx("ding"); fixJuice(tx, ty);
-  if (FIX_LINE[t.code]) say(FIX_LINE[t.code]);
+  // the wound comes first; the first fix's beat replaces the ordinary line
+  const tookLine = hurtMikan(t.ref.id);
+  if (!tookLine && FIX_LINE[t.code]) say(FIX_LINE[t.code]);
   // NG+: choosing the opposite of last run (R04)
-  if ((SAVE.clears || 0) >= 1 && SAVE.bugHistory && SAVE.bugHistory[t.ref.id] === "left") say("R04");
+  if (!tookLine && (SAVE.clears || 0) >= 1 && SAVE.bugHistory && SAVE.bugHistory[t.ref.id] === "left") say("R04");
   if (t.code === "UI_COLLIDER") revealHud(); // fallback: fixing the UI exposes the lie too
   hideToastIfClear();
   updateIncursion();
@@ -1282,6 +1304,7 @@ function frame(now) {
   if (dt > 0.05) dt = 0.05;
   updateFX(dt);                 // FX keep animating even during hitstop
   tickVoice(dt);                // the build's voice types independent of world time
+  renderMikanHeart(dt);         // her heartbeat pulses / weakens independent of hitstop
   update(frozen() ? 0 : dt);    // hitstop freezes the world for a few frames
   render();
   clearPressed();
